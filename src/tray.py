@@ -125,7 +125,7 @@ class TrayManager:
 
     def _get_autostart_text(self, icon) -> str:
         """获取开机自启文本"""
-        return ("✓ " if self._auto_start else "  ") + "开机自启"
+        return "开机自启" + (" ✓" if self._auto_start else "")
 
     def _copy_address(self):
         """复制代理地址"""
