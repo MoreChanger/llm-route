@@ -35,24 +35,42 @@ class TrayManager:
         self.tray: Optional[pystray.Icon] = None
         self._auto_start = self._check_auto_start()
 
-    def _create_icon(self) -> Image.Image:
-        """创建托盘图标"""
-        # 创建一个简单的图标（绿色圆形表示运行）
+    def _create_icon(self, is_running: bool = True) -> Image.Image:
+        """创建托盘图标
+
+        Args:
+            is_running: 服务是否运行中
+        """
         width = 64
         height = 64
         image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
 
-        # 画一个绿色圆形
         margin = 8
+
+        if is_running:
+            # 绿色 - 服务运行中
+            fill_color = (76, 175, 80, 255)    # 绿色
+            outline_color = (56, 142, 60, 255) # 深绿边框
+        else:
+            # 红色 - 服务已停止
+            fill_color = (244, 67, 54, 255)    # 红色
+            outline_color = (198, 40, 40, 255) # 深红边框
+
         draw.ellipse(
             [margin, margin, width - margin, height - margin],
-            fill=(76, 175, 80, 255),  # 绿色
-            outline=(56, 142, 60, 255),
+            fill=fill_color,
+            outline=outline_color,
             width=2
         )
 
         return image
+
+    def _update_icon(self):
+        """根据服务状态更新图标"""
+        if self.tray:
+            is_running = self.proxy_server.runner is not None
+            self.tray.icon = self._create_icon(is_running)
 
     def _create_menu(self) -> pystray.Menu:
         """创建托盘菜单"""
@@ -265,8 +283,10 @@ class TrayManager:
                 print(f"设置开机自启失败: {e}")
 
     def _update_menu(self):
-        """更新菜单"""
+        """更新菜单和图标"""
         if self.tray:
+            # 更新图标颜色
+            self._update_icon()
             # 完全替换菜单来强制刷新
             self.tray.menu = self._create_menu()
             self.tray.update_menu()
@@ -279,9 +299,9 @@ class TrayManager:
 
     def run(self):
         """运行托盘"""
-        # 不再使用 self._is_running，直接检查服务器状态
-
-        icon = self._create_icon()
+        # 根据服务状态创建图标
+        is_running = self.proxy_server.runner is not None
+        icon = self._create_icon(is_running)
         menu = self._create_menu()
 
         self.tray = pystray.Icon(
