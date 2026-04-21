@@ -1,0 +1,23 @@
+# OpenAI 官方预设配置
+upstreams:
+  openai:
+    url: https://api.openai.com
+    protocol: openai
+
+routes:
+  - path: /v1/chat/completions
+    upstream: openai
+  - path: /v1/models
+    upstream: openai
+  - path: /models
+    upstream: openai
+
+retry_rules:
+  - status: 429
+    max_retries: 5
+    delay: 1
+    jitter: 0.5
+  - status: 500
+    max_retries: 3
+    delay: 2
+    jitter: 1

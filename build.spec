@@ -19,6 +19,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('config.yaml', '.'),  # Include config.yaml
+        ('presets', 'presets'),  # Include presets directory
     ],
     hiddenimports=[
         'pystray._win32',

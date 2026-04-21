@@ -19,7 +19,9 @@ class TrayManager:
         proxy_server,
         on_exit: Callable[[], None],
         on_port_change: Callable[[int], None],
-        on_toggle_service: Callable[[], None]
+        on_toggle_service: Callable[[], None],
+        on_preset_change: Callable[[str], None],
+        config_path: str
     ):
         """
         Args:
@@ -27,13 +29,18 @@ class TrayManager:
             on_exit: 退出回调
             on_port_change: 端口变更回调
             on_toggle_service: 切换服务状态回调
+            on_preset_change: 预设变更回调
+            config_path: 配置文件路径
         """
         self.proxy_server = proxy_server
         self.on_exit = on_exit
         self.on_port_change = on_port_change
         self.on_toggle_service = on_toggle_service
+        self.on_preset_change = on_preset_change
+        self.config_path = config_path
         self.tray: Optional[pystray.Icon] = None
         self._auto_start = self._check_auto_start()
+        self._current_preset = self._detect_current_preset()
 
     def _create_icon(self, is_running: bool = True) -> Image.Image:
         """创建托盘图标
@@ -75,6 +82,9 @@ class TrayManager:
 
     def _create_menu(self) -> pystray.Menu:
         """创建托盘菜单"""
+        # 构建预设子菜单
+        preset_items = self._create_preset_menu_items()
+
         return pystray.Menu(
             pystray.MenuItem(
                 self._get_status_text,
@@ -99,6 +109,10 @@ class TrayManager:
                 self._change_port
             ),
             pystray.MenuItem(
+                "加载预设",
+                pystray.Menu(*preset_items) if preset_items else None
+            ),
+            pystray.MenuItem(
                 self._get_autostart_text,
                 self._toggle_auto_start
             ),
@@ -108,6 +122,71 @@ class TrayManager:
                 self._quit
             )
         )
+
+    def _create_preset_menu_items(self) -> list:
+        """创建预设菜单项"""
+        from src.config import list_presets
+
+        items = []
+        presets = list_presets()
+
+        for name, preset_path in presets:
+            # 显示名称，当前预设带勾
+            display_name = name + (" ✓" if name == self._current_preset else "")
+            # 创建一个闭包来捕获参数
+            def make_callback(n, p):
+                def callback(icon, item):
+                    self._load_preset(n, p)
+                return callback
+            items.append(
+                pystray.MenuItem(
+                    display_name,
+                    make_callback(name, preset_path)
+                )
+            )
+
+        if not items:
+            items.append(pystray.MenuItem("(无预设)", self._noop))
+
+        return items
+
+    def _noop(self, icon, item):
+        """空操作回调"""
+        pass
+
+    def _detect_current_preset(self) -> Optional[str]:
+        """检测当前使用的是哪个预设"""
+        from src.config import list_presets, load_config
+
+        try:
+            current_config = load_config(self.config_path)
+            presets = list_presets()
+
+            for name, preset_path in presets:
+                with open(preset_path, "r", encoding="utf-8") as f:
+                    preset_data = __import__('yaml').safe_load(f) or {}
+
+                # 比较 upstreams 和 routes
+                if (preset_data.get("upstreams") == {k: {"url": v.url, "protocol": v.protocol}
+                                                      for k, v in current_config.upstreams.items()}
+                    and preset_data.get("routes") == [{"path": r.path, "upstream": r.upstream}
+                                                      for r in current_config.routes]):
+                    return name
+        except Exception:
+            pass
+        return None
+
+    def _load_preset(self, name: str, preset_path):
+        """加载预设"""
+        from src.config import apply_preset
+
+        if name == self._current_preset:
+            return  # 已经是当前预设
+
+        if apply_preset(preset_path, self.config_path):
+            self._current_preset = name
+            self.on_preset_change(name)
+            self._update_menu()
 
     def _get_status_text(self, icon) -> str:
         """获取状态文本"""

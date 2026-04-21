@@ -7,25 +7,23 @@ host: 127.0.0.1
 # - 省略：默认 8087
 port: 8087
 
-# 上游服务配置
-upstreams:
-  anthropic:
-    url: https://api.anthropic.com
-    protocol: anthropic
-  openai:
-    url: https://api.openai.com
-    protocol: openai
+# 上游服务配置（示例）
+# upstreams:
+#   anthropic:
+#     url: https://api.anthropic.com
+#     protocol: anthropic
+#   openai:
+#     url: https://api.openai.com
+#     protocol: openai
 
-# 路径路由规则
-routes:
-  - path: /v1/messages
-    upstream: anthropic
-  - path: /v1/models
-    upstream: anthropic
-  - path: /v1/chat/completions
-    upstream: openai
-  - path: /models
-    upstream: openai
+# 路径路由规则（示例）
+# routes:
+#   - path: /v1/messages
+#     upstream: anthropic
+#   - path: /v1/chat/completions
+#     upstream: openai
+#   - path: /v1/models
+#     upstream: openai
 
 # 重试规则（按顺序匹配）
 retry_rules:

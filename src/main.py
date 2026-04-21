@@ -83,7 +83,7 @@ async def run_headless(server: ProxyServer):
         await server.stop()
 
 
-async def run_with_tray(server: ProxyServer):
+async def run_with_tray(server: ProxyServer, config_path: str):
     """带托盘运行
 
     启动服务并显示系统托盘。
@@ -125,8 +125,21 @@ async def run_with_tray(server: ProxyServer):
 
         asyncio.run_coroutine_threadsafe(toggle(), loop)
 
+    def on_preset_change(preset_name: str):
+        """预设变更回调"""
+        async def reload():
+            # 重新加载配置
+            new_config = load_config(config_path)
+            # 保留当前端口
+            new_config.port = server.config.port
+            # 更新服务器配置
+            server.config = new_config
+            server.log(f"已加载预设: {preset_name}")
+
+        asyncio.run_coroutine_threadsafe(reload(), loop)
+
     # 在单独线程中运行托盘
-    tray = TrayManager(server, on_exit, on_port_change, on_toggle_service)
+    tray = TrayManager(server, on_exit, on_port_change, on_toggle_service, on_preset_change, config_path)
 
     import threading
     tray_thread = threading.Thread(target=tray.run, daemon=True)
@@ -174,7 +187,7 @@ def main():
     if args.headless:
         asyncio.run(run_headless(server))
     else:
-        asyncio.run(run_with_tray(server))
+        asyncio.run(run_with_tray(server, config_path))
 
 
 if __name__ == "__main__":

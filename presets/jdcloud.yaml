@@ -1,0 +1,41 @@
+# JD Cloud 预设配置
+# 上游服务配置
+upstreams:
+  anthropic:
+    url: https://modelservice.jdcloud.com/coding/anthropic
+    protocol: anthropic
+  openai:
+    url: https://modelservice.jdcloud.com/coding/openai
+    protocol: openai
+
+# 路径路由规则
+routes:
+  - path: /v1/messages
+    upstream: anthropic
+  - path: /v1/models
+    upstream: anthropic
+  - path: /v1/chat/completions
+    upstream: openai
+  - path: /models
+    upstream: anthropic
+
+# 重试规则（按顺序匹配）
+retry_rules:
+  - status: 400
+    body_contains: "overloaded"
+    max_retries: 10
+    delay: 2
+    jitter: 1
+  - status: 400
+    body_contains: "Too many requests"
+    max_retries: 10
+    delay: 2
+    jitter: 1
+  - status: 429
+    max_retries: 10
+    delay: 2
+    jitter: 1
+  - status: 500
+    max_retries: 5
+    delay: 3
+    jitter: 1

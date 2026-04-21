@@ -1,0 +1,23 @@
+# Anthropic 官方预设配置
+upstreams:
+  anthropic:
+    url: https://api.anthropic.com
+    protocol: anthropic
+
+routes:
+  - path: /v1/messages
+    upstream: anthropic
+  - path: /v1/models
+    upstream: anthropic
+  - path: /models
+    upstream: anthropic
+
+retry_rules:
+  - status: 429
+    max_retries: 5
+    delay: 1
+    jitter: 0.5
+  - status: 500
+    max_retries: 3
+    delay: 2
+    jitter: 1

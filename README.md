@@ -74,8 +74,20 @@ export OPENAI_BASE_URL=http://127.0.0.1:8087
 - 日志详情
 - 启动/停止服务
 - 更换端口
+- 加载预设
 - 开机自启
 - 退出
+
+## 预设
+
+预设文件存放在 `presets/` 目录，切换预设后自动更新配置。
+
+内置预设：
+- `openai.yaml` — OpenAI 官方 API
+- `anthropic.yaml` — Anthropic 官方 API
+- `jdcloud.yaml` — JD Cloud 模型服务
+
+添加新预设只需在 `presets/` 目录创建 `.yaml` 文件即可自动识别。
 
 ## 从源码运行
 

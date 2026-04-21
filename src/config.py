@@ -1,8 +1,10 @@
 """配置加载与校验模块"""
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Union
 import os
+import shutil
 
 import yaml
 
@@ -39,6 +41,90 @@ class Config:
     upstreams: dict[str, Upstream] = field(default_factory=dict)
     routes: list[Route] = field(default_factory=list)
     retry_rules: list[RetryRule] = field(default_factory=list)
+
+
+def get_presets_dir() -> Path:
+    """获取预设目录路径"""
+    # 优先使用可执行文件同目录
+    if getattr(os, 'frozen', False):
+        base_dir = Path(sys.executable).parent
+    else:
+        base_dir = Path(__file__).parent.parent
+    return base_dir / "presets"
+
+
+def list_presets() -> list[tuple[str, Path]]:
+    """列出所有可用预设
+
+    Returns:
+        [(显示名称, 预设文件路径), ...]
+    """
+    presets_dir = get_presets_dir()
+    if not presets_dir.exists():
+        return []
+
+    presets = []
+    for preset_file in sorted(presets_dir.glob("*.yaml")):
+        name = preset_file.stem  # 文件名（不含扩展名）
+        presets.append((name, preset_file))
+
+    return presets
+
+
+def apply_preset(preset_path: Path, config_path: str) -> bool:
+    """应用预设到配置文件
+
+    Args:
+        preset_path: 预设文件路径
+        config_path: 目标配置文件路径
+
+    Returns:
+        是否成功
+    """
+    try:
+        # 读取预设内容
+        with open(preset_path, "r", encoding="utf-8") as f:
+            preset_data = yaml.safe_load(f) or {}
+
+        # 读取当前配置
+        config_file = Path(config_path)
+        if config_file.exists():
+            with open(config_file, "r", encoding="utf-8") as f:
+                config_data = yaml.safe_load(f) or {}
+        else:
+            config_data = {}
+
+        # 保持原始顺序构建新配置
+        ordered_config = {}
+
+        # 1. host（如果存在）
+        if "host" in config_data:
+            ordered_config["host"] = config_data["host"]
+
+        # 2. port（如果存在）
+        if "port" in config_data:
+            ordered_config["port"] = config_data["port"]
+
+        # 3. upstreams
+        if preset_data.get("upstreams"):
+            ordered_config["upstreams"] = preset_data["upstreams"]
+
+        # 4. routes
+        if preset_data.get("routes"):
+            ordered_config["routes"] = preset_data["routes"]
+
+        # 5. retry_rules
+        if preset_data.get("retry_rules"):
+            ordered_config["retry_rules"] = preset_data["retry_rules"]
+
+        # 写回配置文件（使用 sort_keys=False 保持顺序）
+        with open(config_file, "w", encoding="utf-8") as f:
+            yaml.dump(ordered_config, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+        return True
+    except Exception as e:
+        print(f"应用预设失败: {e}")
+        return False
 
 
 def load_config(config_path: str) -> Config:
