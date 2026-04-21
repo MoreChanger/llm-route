@@ -70,7 +70,10 @@ class TrayManager:
         """根据服务状态更新图标"""
         if self.tray:
             is_running = self.proxy_server.runner is not None
-            self.tray.icon = self._create_icon(is_running)
+            new_icon = self._create_icon(is_running)
+            # pystray 需要重新设置 icon 属性并可能需要触发更新
+            self.tray.icon = new_icon
+            self.tray.update_menu()  # 触发界面更新
 
     def _create_menu(self) -> pystray.Menu:
         """创建托盘菜单"""
@@ -114,10 +117,8 @@ class TrayManager:
         is_running = self.proxy_server.runner is not None
         port = self.proxy_server.config.port
         if is_running:
-            # 绿色圆点 🟢
-            return f"🟢 服务运行中 :{port}"
-        # 红色圆点 🔴
-        return "🔴 服务已停止"
+            return f"[运行中] :{port}"
+        return "[已停止]"
 
     def _get_service_text(self, icon) -> str:
         """获取服务状态文本"""
@@ -300,7 +301,8 @@ class TrayManager:
 
     def run(self):
         """运行托盘"""
-        # 根据服务状态创建图标
+        # 托盘启动时服务应该已经在运行（由 main.py 先启动服务）
+        # 默认创建绿色图标，后续通过 _update_menu 更新
         is_running = self.proxy_server.runner is not None
         icon = self._create_icon(is_running)
         menu = self._create_menu()
