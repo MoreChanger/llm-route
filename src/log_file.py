@@ -18,12 +18,14 @@ class LogManager:
         self._log_level: int = 2  # 默认详细信息
         self._line_count: int = 0  # 当前行数
 
-    def get_logs_dir() -> Path:
+    def get_logs_dir(self) -> Path:
         """获取日志目录路径"""
-        # 优先使用可执行文件同目录
-        if getattr(os, 'frozen', False):
+        # 打包后的 exe：使用 exe 所在目录
+        # 注意：必须检查 sys.frozen 而不是 os.path
+        if getattr(sys, 'frozen', False):
             base_dir = Path(sys.executable).parent
         else:
+            # 开发模式：使用项目根目录
             base_dir = Path(__file__).parent.parent
         return base_dir / "logs"
 
@@ -39,7 +41,7 @@ class LogManager:
         self._log_level = log_level
 
         # 创建日志目录
-        logs_dir = LogManager.get_logs_dir()
+        logs_dir = self.get_logs_dir()
         logs_dir.mkdir(parents=True, exist_ok=True)
 
         # 创建日志文件（按启动时间命名）
@@ -90,8 +92,12 @@ class LogManager:
                 self._log_file.flush()
                 self._line_count += 1
 
-        # 同时打印到控制台
-        print(log_line)
+        # 打印到控制台（无控制台模式下忽略错误）
+        try:
+            print(log_line)
+        except (UnicodeEncodeError, OSError):
+            # Windows 无控制台模式或编码问题
+            pass
 
     def log_request(
         self,

@@ -12,6 +12,14 @@ from src.log_file import LogManager
 from src.single_instance import SingleInstanceLock
 
 
+def safe_print(message: str):
+    """安全打印，在无控制台模式下不报错"""
+    try:
+        print(message)
+    except (UnicodeEncodeError, OSError):
+        pass
+
+
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(
@@ -74,13 +82,13 @@ async def run_headless(server: ProxyServer, log_manager: LogManager):
     """
     try:
         await server.start()
-        print(f"服务运行中，监听 {server.config.host}:{server.config.port}")
-        print("按 Ctrl+C 停止服务...")
+        safe_print(f"服务运行中，监听 {server.config.host}:{server.config.port}")
+        safe_print("按 Ctrl+C 停止服务...")
         # 保持运行
         while True:
             await asyncio.sleep(1)
     except KeyboardInterrupt:
-        print("\n正在停止服务...")
+        safe_print("\n正在停止服务...")
     finally:
         await server.stop()
         log_manager.stop()
@@ -174,7 +182,7 @@ def main():
     # 单实例检查
     lock = SingleInstanceLock("llm-route")
     if not lock.acquire():
-        print("LLM-ROUTE 已在运行中")
+        safe_print("LLM-ROUTE 已在运行中")
         sys.exit(1)
 
     try:
@@ -194,18 +202,18 @@ def main():
         # 解析端口
         if config.port == "auto":
             config.port = random_available_port(config.host)
-            print(f"自动分配端口: {config.port}")
+            safe_print(f"自动分配端口: {config.port}")
         else:
             # 检查端口是否可用，不可用则寻找下一个
             if not is_port_available(config.host, config.port):
-                print(f"端口 {config.port} 已被占用，寻找可用端口...")
+                safe_print(f"端口 {config.port} 已被占用，寻找可用端口...")
                 config.port = find_available_port(config.host, config.port + 1)
-                print(f"使用端口: {config.port}")
+                safe_print(f"使用端口: {config.port}")
 
         # 创建日志管理器
         log_manager = LogManager()
         log_path = log_manager.start(config.log_level)
-        print(f"日志文件: {log_path}")
+        safe_print(f"日志文件: {log_path}")
 
         # 创建代理服务器
         server = ProxyServer(config, log_manager)
@@ -215,6 +223,18 @@ def main():
             asyncio.run(run_headless(server, log_manager))
         else:
             asyncio.run(run_with_tray(server, log_manager, config_path))
+    except Exception as e:
+        import traceback
+        # 写入错误到文件
+        error_file = Path(__file__).parent.parent / "error.log"
+        if getattr(sys, 'frozen', False):
+            error_file = Path(sys.executable).parent / "error.log"
+        try:
+            with open(error_file, "w", encoding="utf-8") as f:
+                f.write(traceback.format_exc())
+        except:
+            pass
+        raise
     finally:
         # 释放单实例锁
         lock.release()
