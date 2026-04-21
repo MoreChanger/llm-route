@@ -148,10 +148,15 @@ class TrayManager:
 
     def _toggle_service(self):
         """切换服务状态"""
+        # 先获取当前状态（切换前）
+        was_running = self.proxy_server.runner is not None
         # 使用回调函数，由主线程的事件循环处理
         self.on_toggle_service()
-        # 更新菜单显示
-        self._update_menu()
+        # 延迟更新菜单，等待服务状态改变
+        if self.tray:
+            import threading
+            # 延迟 500ms 后更新，给服务足够时间启动/停止
+            threading.Timer(0.5, self._update_menu).start()
 
     def _change_port(self):
         """更换端口"""
