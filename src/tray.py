@@ -71,9 +71,7 @@ class TrayManager:
         if self.tray:
             is_running = self.proxy_server.runner is not None
             new_icon = self._create_icon(is_running)
-            # pystray 需要重新设置 icon 属性并可能需要触发更新
             self.tray.icon = new_icon
-            self.tray.update_menu()  # 触发界面更新
 
     def _create_menu(self) -> pystray.Menu:
         """创建托盘菜单"""
@@ -290,13 +288,10 @@ class TrayManager:
                 print(f"设置开机自启失败: {e}")
 
     def _update_menu(self):
-        """更新菜单和图标"""
+        """更新图标（菜单会在下次打开时自动获取最新状态）"""
         if self.tray:
-            # 更新图标颜色
+            # 只更新图标颜色
             self._update_icon()
-            # 完全替换菜单来强制刷新
-            self.tray.menu = self._create_menu()
-            self.tray.update_menu()
 
     def _quit(self):
         """退出程序"""
