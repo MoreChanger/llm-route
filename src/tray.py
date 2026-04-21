@@ -56,8 +56,8 @@ class TrayManager:
         """创建托盘菜单"""
         return pystray.Menu(
             pystray.MenuItem(
-                lambda: self._get_status_text(),
-                lambda: None,
+                self._get_status_text,
+                lambda icon: None,
                 enabled=False
             ),
             pystray.Menu.SEPARATOR,
@@ -71,7 +71,7 @@ class TrayManager:
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
-                lambda: "停止服务" if self._is_running else "启动服务",
+                self._get_service_text,
                 self._toggle_service
             ),
             pystray.MenuItem(
@@ -79,7 +79,7 @@ class TrayManager:
                 self._change_port
             ),
             pystray.MenuItem(
-                lambda: ("✓ " if self._auto_start else "  ") + "开机自启",
+                self._get_autostart_text,
                 self._toggle_auto_start
             ),
             pystray.Menu.SEPARATOR,
@@ -89,12 +89,20 @@ class TrayManager:
             )
         )
 
-    def _get_status_text(self) -> str:
+    def _get_status_text(self, icon) -> str:
         """获取状态文本"""
         if self._is_running:
             port = self.proxy_server.config.port
             return f"● 服务运行中 :{port}"
         return "○ 服务已停止"
+
+    def _get_service_text(self, icon) -> str:
+        """获取服务状态文本"""
+        return "停止服务" if self._is_running else "启动服务"
+
+    def _get_autostart_text(self, icon) -> str:
+        """获取开机自启文本"""
+        return ("✓ " if self._auto_start else "  ") + "开机自启"
 
     def _copy_address(self):
         """复制代理地址"""
