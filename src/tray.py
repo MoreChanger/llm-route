@@ -33,7 +33,6 @@ class TrayManager:
         self.on_port_change = on_port_change
         self.on_toggle_service = on_toggle_service
         self.tray: Optional[pystray.Icon] = None
-        self._is_running = False
         self._auto_start = self._check_auto_start()
 
     def _create_icon(self) -> Image.Image:
@@ -252,7 +251,9 @@ class TrayManager:
     def _update_menu(self):
         """更新菜单"""
         if self.tray:
+            # 完全替换菜单来强制刷新
             self.tray.menu = self._create_menu()
+            self.tray.update_menu()
 
     def _quit(self):
         """退出程序"""
@@ -262,7 +263,7 @@ class TrayManager:
 
     def run(self):
         """运行托盘"""
-        self._is_running = True
+        # 不再使用 self._is_running，直接检查服务器状态
 
         icon = self._create_icon()
         menu = self._create_menu()
