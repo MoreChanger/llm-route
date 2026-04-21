@@ -77,8 +77,7 @@ class TrayManager:
         return pystray.Menu(
             pystray.MenuItem(
                 self._get_status_text,
-                lambda icon: None,
-                enabled=False
+                lambda icon: None
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
@@ -113,10 +112,12 @@ class TrayManager:
         """获取状态文本"""
         # 根据服务器实际状态判断
         is_running = self.proxy_server.runner is not None
+        port = self.proxy_server.config.port
         if is_running:
-            port = self.proxy_server.config.port
-            return f"● 服务运行中 :{port}"
-        return "○ 服务已停止"
+            # 绿色圆点 🟢
+            return f"🟢 服务运行中 :{port}"
+        # 红色圆点 🔴
+        return "🔴 服务已停止"
 
     def _get_service_text(self, icon) -> str:
         """获取服务状态文本"""
