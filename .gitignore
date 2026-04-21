@@ -41,3 +41,7 @@ htmlcov/
 
 # Build artifacts
 *.spec.bak
+
+# Runtime
+.llm-route.lock
+logs/

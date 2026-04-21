@@ -17,26 +17,32 @@ class TrayManager:
     def __init__(
         self,
         proxy_server,
+        log_manager,
         on_exit: Callable[[], None],
         on_port_change: Callable[[int], None],
         on_toggle_service: Callable[[], None],
         on_preset_change: Callable[[str], None],
+        on_log_level_change: Callable[[int], None],
         config_path: str
     ):
         """
         Args:
             proxy_server: ProxyServer 实例
+            log_manager: LogManager 实例
             on_exit: 退出回调
             on_port_change: 端口变更回调
             on_toggle_service: 切换服务状态回调
             on_preset_change: 预设变更回调
+            on_log_level_change: 日志等级变更回调
             config_path: 配置文件路径
         """
         self.proxy_server = proxy_server
+        self.log_manager = log_manager
         self.on_exit = on_exit
         self.on_port_change = on_port_change
         self.on_toggle_service = on_toggle_service
         self.on_preset_change = on_preset_change
+        self.on_log_level_change = on_log_level_change
         self.config_path = config_path
         self.tray: Optional[pystray.Icon] = None
         self._auto_start = self._check_auto_start()
@@ -84,6 +90,8 @@ class TrayManager:
         """创建托盘菜单"""
         # 构建预设子菜单
         preset_items = self._create_preset_menu_items()
+        # 构建日志等级子菜单
+        log_level_items = self._create_log_level_menu_items()
 
         return pystray.Menu(
             pystray.MenuItem(
@@ -98,6 +106,10 @@ class TrayManager:
             pystray.MenuItem(
                 "日志详情",
                 self._show_logs
+            ),
+            pystray.MenuItem(
+                "日志等级",
+                pystray.Menu(*log_level_items)
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
@@ -149,6 +161,38 @@ class TrayManager:
             items.append(pystray.MenuItem("(无预设)", self._noop))
 
         return items
+
+    def _create_log_level_menu_items(self) -> list:
+        """创建日志等级菜单项"""
+        levels = [
+            (1, "基础信息"),
+            (2, "详细信息"),
+            (3, "完整信息")
+        ]
+
+        items = []
+        current_level = self.log_manager.get_level()
+
+        for level, name in levels:
+            display_name = name + (" ✓" if level == current_level else "")
+            def make_callback(l):
+                def callback(icon, item):
+                    self._set_log_level(l)
+                return callback
+            items.append(
+                pystray.MenuItem(
+                    display_name,
+                    make_callback(level)
+                )
+            )
+
+        return items
+
+    def _set_log_level(self, level: int):
+        """设置日志等级"""
+        self.log_manager.set_level(level)
+        self.on_log_level_change(level)
+        self._update_menu()
 
     def _noop(self, icon, item):
         """空操作回调"""
@@ -218,7 +262,7 @@ class TrayManager:
     def _show_logs(self):
         """显示日志窗口"""
         def show():
-            show_log_window(self.proxy_server.get_logs)
+            show_log_window(self.proxy_server.get_logs_page)
 
         thread = threading.Thread(target=show, daemon=True)
         thread.start()

@@ -10,6 +10,7 @@ from aiohttp import web
 
 from src.config import Config, Route, Upstream
 from src.retry import calculate_delay
+from src.log_file import LogManager
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +28,7 @@ class RequestContext:
     matched_route: Optional[Route] = None
     upstream: Optional[Upstream] = None
     attempt: int = 0
+    start_time: float = 0.0  # 请求开始时间
     _request: Optional[web.Request] = None  # 原始请求对象，用于流式响应
 
 
@@ -49,25 +51,25 @@ def match_route(path: str, routes: list[Route]) -> Optional[Route]:
 class ProxyServer:
     """HTTP 代理服务器"""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, log_manager: LogManager):
         self.config = config
+        self.log_manager = log_manager
         self.app: Optional[web.Application] = None
         self.runner: Optional[web.AppRunner] = None
         self.site: Optional[web.TCPSite] = None
         self.client_session: Optional[aiohttp.ClientSession] = None
-        self._logs: list[str] = []  # 日志存储
 
     def log(self, message: str, level: str = "INFO"):
         """记录日志"""
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        log_line = f"[{timestamp}] {level:5} {message}"
-        self._logs.append(log_line)
-        # 同时打印到控制台
-        print(log_line)
+        self.log_manager.log(message, level)
 
     def get_logs(self) -> list[str]:
         """获取日志列表"""
-        return self._logs.copy()
+        return self.log_manager.get_logs()
+
+    def get_logs_page(self, page: int, page_size: int = 100) -> tuple[list[str], int, int]:
+        """获取分页日志"""
+        return self.log_manager.get_logs_page(page, page_size)
 
     async def start(self) -> None:
         """启动代理服务器"""
@@ -116,18 +118,25 @@ class ProxyServer:
             headers=dict(request.headers),
             body=body,
             query_string=request.query_string,
+            start_time=time.time(),
             _request=request
         )
 
         # 匹配路由
         ctx.matched_route = match_route(ctx.path, self.config.routes)
         if ctx.matched_route is None:
+            # 记录 404 请求
+            elapsed_ms = (time.time() - ctx.start_time) * 1000
+            self.log(f"{ctx.method} {ctx.path} -> 404 Not Found ({elapsed_ms:.0f}ms)")
             return web.Response(status=404, text="Not Found")
 
         # 获取上游配置
         upstream_name = ctx.matched_route.upstream
         ctx.upstream = self.config.upstreams.get(upstream_name)
         if ctx.upstream is None:
+            # 记录配置错误
+            elapsed_ms = (time.time() - ctx.start_time) * 1000
+            self.log(f"{ctx.method} {ctx.path} -> 502 Unknown upstream: {upstream_name} ({elapsed_ms:.0f}ms)", "ERROR")
             return web.Response(status=502, text=f"Unknown upstream: {upstream_name}")
 
         # 检测是否为流式请求
@@ -161,6 +170,19 @@ class ProxyServer:
                 if self._should_retry(response.status, body, ctx.attempt):
                     return await self._retry(ctx)
 
+                # 记录请求日志
+                elapsed_ms = (time.time() - ctx.start_time) * 1000
+                self.log_manager.log_request(
+                    method=ctx.method,
+                    path=ctx.path,
+                    upstream=ctx.matched_route.upstream,
+                    status_code=response.status,
+                    elapsed_ms=elapsed_ms,
+                    retries=ctx.attempt,
+                    request_body=ctx.body.decode('utf-8', errors='ignore'),
+                    response_body=body.decode('utf-8', errors='ignore')
+                )
+
                 # 返回响应（过滤掉 hop-by-hop 头）
                 filtered_headers = self._filter_response_headers(response_headers)
                 return web.Response(
@@ -170,6 +192,10 @@ class ProxyServer:
                 )
 
         except aiohttp.ClientError as e:
+            # 记录错误日志
+            elapsed_ms = (time.time() - ctx.start_time) * 1000
+            self.log(f"{ctx.method} {ctx.path} -> {ctx.matched_route.upstream} [ERROR] {elapsed_ms:.0f}ms - {str(e)}", "ERROR")
+
             # 连接错误，尝试重试
             if ctx.attempt < self._get_max_retries():
                 return await self._retry(ctx)
@@ -281,10 +307,28 @@ class ProxyServer:
                 headers=headers,
                 data=ctx.body,
             ) as upstream_resp:
+                # 收集响应内容用于日志
+                resp_chunks = []
                 async for chunk in upstream_resp.content.iter_any():
+                    resp_chunks.append(chunk)
                     await response.write(chunk)
+
+                # 记录流式请求完成
+                elapsed_ms = (time.time() - ctx.start_time) * 1000
+                resp_body = b"".join(resp_chunks).decode('utf-8', errors='ignore')
+                self.log_manager.log_request(
+                    method=ctx.method,
+                    path=ctx.path,
+                    upstream=ctx.matched_route.upstream,
+                    status_code=upstream_resp.status,
+                    elapsed_ms=elapsed_ms,
+                    retries=ctx.attempt,
+                    request_body=ctx.body.decode('utf-8', errors='ignore'),
+                    response_body=resp_body
+                )
         except aiohttp.ClientError as e:
             # 流式传输错误，记录日志
-            pass
+            elapsed_ms = (time.time() - ctx.start_time) * 1000
+            self.log(f"{ctx.method} {ctx.path} -> {ctx.matched_route.upstream} [STREAMING ERROR] {elapsed_ms:.0f}ms - {str(e)}", "ERROR")
 
         return response

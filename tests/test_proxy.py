@@ -6,6 +6,7 @@ from aiohttp import web
 
 from src.proxy import ProxyServer, match_route
 from src.config import Config, Upstream, Route, RetryRule
+from src.log_file import LogManager
 
 
 class TestMatchRoute:
@@ -65,18 +66,26 @@ class TestProxyServer:
             ]
         )
 
+    @pytest.fixture
+    def log_manager(self):
+        """测试日志管理器"""
+        lm = LogManager()
+        lm.start(log_level=2)
+        return lm
+
     @pytest.mark.asyncio
-    async def test_proxy_server_creation(self, config):
+    async def test_proxy_server_creation(self, config, log_manager):
         """测试代理服务器创建"""
-        server = ProxyServer(config)
+        server = ProxyServer(config, log_manager)
         assert server.config == config
         assert server.app is None
         assert server.runner is None
+        log_manager.stop()
 
     @pytest.mark.asyncio
-    async def test_start_stop_server(self, config):
+    async def test_start_stop_server(self, config, log_manager):
         """测试启动和停止服务器"""
-        server = ProxyServer(config)
+        server = ProxyServer(config, log_manager)
 
         await server.start()
         assert server.runner is not None
@@ -90,11 +99,12 @@ class TestProxyServer:
 
         await server.stop()
         assert server.runner is None
+        log_manager.stop()
 
     @pytest.mark.asyncio
-    async def test_handle_unknown_path(self, config):
+    async def test_handle_unknown_path(self, config, log_manager):
         """测试处理未知路径"""
-        server = ProxyServer(config)
+        server = ProxyServer(config, log_manager)
         await server.start()
 
         import aiohttp
@@ -103,11 +113,12 @@ class TestProxyServer:
                 assert resp.status == 404
 
         await server.stop()
+        log_manager.stop()
 
     @pytest.mark.asyncio
-    async def test_streaming_request(self, config):
+    async def test_streaming_request(self, config, log_manager):
         """测试流式请求处理"""
-        server = ProxyServer(config)
+        server = ProxyServer(config, log_manager)
         await server.start()
 
         # 测试流式请求路径存在
@@ -124,10 +135,11 @@ class TestProxyServer:
                 assert resp.status in [200, 401, 403, 502, 503]
 
         await server.stop()
+        log_manager.stop()
 
-    def test_is_streaming_request(self, config):
+    def test_is_streaming_request(self, config, log_manager):
         """测试流式请求检测"""
-        server = ProxyServer(config)
+        server = ProxyServer(config, log_manager)
 
         # 带有 Accept: text/event-stream 的请求
         headers = {"Accept": "text/event-stream"}
@@ -139,3 +151,5 @@ class TestProxyServer:
 
         # 非流式请求
         assert server._is_streaming_request({}, b'{}') is False
+
+        log_manager.stop()

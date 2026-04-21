@@ -38,6 +38,7 @@ class Config:
     """主配置"""
     host: str = "127.0.0.1"
     port: Union[int, str] = 8087  # int 或 "auto"
+    log_level: int = 2  # 1=基础, 2=详细, 3=完整
     upstreams: dict[str, Upstream] = field(default_factory=dict)
     routes: list[Route] = field(default_factory=list)
     retry_rules: list[RetryRule] = field(default_factory=list)
@@ -105,6 +106,10 @@ def apply_preset(preset_path: Path, config_path: str) -> bool:
         if "port" in config_data:
             ordered_config["port"] = config_data["port"]
 
+        # 3. log_level（如果存在）
+        if "log_level" in config_data:
+            ordered_config["log_level"] = config_data["log_level"]
+
         # 3. upstreams
         if preset_data.get("upstreams"):
             ordered_config["upstreams"] = preset_data["upstreams"]
@@ -146,6 +151,7 @@ def load_config(config_path: str) -> Config:
     # 加载基本配置
     config.host = data.get("host", "127.0.0.1")
     config.port = data.get("port", 8087)
+    config.log_level = data.get("log_level", 2)
 
     # 加载上游配置
     upstreams_data = data.get("upstreams", {})
@@ -183,3 +189,28 @@ def load_config(config_path: str) -> Config:
             config.port = int(env_port)
 
     return config
+
+
+def save_config(config: Config, config_path: str):
+    """保存配置到 YAML 文件
+
+    Args:
+        config: 配置对象
+        config_path: 配置文件路径
+    """
+    # 读取现有配置以保留注释和顺序
+    path = Path(config_path)
+    if path.exists():
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    else:
+        data = {}
+
+    # 更新基本配置
+    data["host"] = config.host
+    data["port"] = config.port
+    data["log_level"] = config.log_level
+
+    # 写回文件
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
