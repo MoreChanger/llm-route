@@ -3,12 +3,17 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from typing import Optional
+import logging
 
 import aiohttp
 from aiohttp import web
 
 from src.config import Config, Route, Upstream
 from src.retry import calculate_delay
+
+# 配置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,6 +55,19 @@ class ProxyServer:
         self.runner: Optional[web.AppRunner] = None
         self.site: Optional[web.TCPSite] = None
         self.client_session: Optional[aiohttp.ClientSession] = None
+        self._logs: list[str] = []  # 日志存储
+
+    def log(self, message: str, level: str = "INFO"):
+        """记录日志"""
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        log_line = f"[{timestamp}] {level:5} {message}"
+        self._logs.append(log_line)
+        # 同时打印到控制台
+        print(log_line)
+
+    def get_logs(self) -> list[str]:
+        """获取日志列表"""
+        return self._logs.copy()
 
     async def start(self) -> None:
         """启动代理服务器"""
@@ -71,6 +89,9 @@ class ProxyServer:
         )
         await self.site.start()
 
+        port = self.config.port if isinstance(self.config.port, int) else 8087
+        self.log(f"服务启动，监听 {self.config.host}:{port}")
+
     async def stop(self) -> None:
         """停止代理服务器"""
         if self.client_session:
@@ -83,6 +104,7 @@ class ProxyServer:
 
         self.site = None
         self.app = None
+        self.log("服务已停止")
 
     async def handle_request(self, request: web.Request) -> web.Response:
         """处理所有请求"""
