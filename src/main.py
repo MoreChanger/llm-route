@@ -100,6 +100,12 @@ async def run_with_tray(server: ProxyServer):
     def on_port_change(new_port):
         """端口变更回调"""
         async def change():
+            # 先检测端口是否可用
+            if new_port != "auto" and not is_port_available(server.config.host, new_port):
+                # 端口被占用，不进行切换，通过日志提示
+                server.log(f"端口 {new_port} 已被占用，请选择其他端口", "ERROR")
+                return
+
             await server.stop()
             if new_port == "auto":
                 server.config.port = random_available_port(server.config.host)

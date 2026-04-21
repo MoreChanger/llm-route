@@ -135,7 +135,8 @@ class TrayManager:
 
     def _change_port(self):
         """更换端口"""
-        # 使用 pystray 的方式在主线程弹出对话框
+        from src.port import is_port_available
+
         result = {"port": None}
 
         def show_dialog():
@@ -169,11 +170,17 @@ class TrayManager:
                         root.destroy()
                     else:
                         port = int(port_str)
-                        if 1 <= port <= 65535:
-                            result["port"] = port
-                            root.destroy()
-                        else:
+                        if not (1 <= port <= 65535):
                             messagebox.showerror("错误", "端口必须在 1-65535 之间", parent=root)
+                            return
+
+                        # 检测端口是否可用
+                        if not is_port_available(self.proxy_server.config.host, port):
+                            messagebox.showerror("错误", f"端口 {port} 已被占用，请选择其他端口", parent=root)
+                            return
+
+                        result["port"] = port
+                        root.destroy()
                 except ValueError:
                     messagebox.showerror("错误", "请输入有效的端口号", parent=root)
 
