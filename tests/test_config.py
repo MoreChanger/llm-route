@@ -1,0 +1,130 @@
+"""配置模块测试"""
+import pytest
+from pathlib import Path
+import tempfile
+import yaml
+
+from src.config import Config, RetryRule, Upstream, Route, load_config
+
+
+class TestRetryRule:
+    def test_retry_rule_creation(self):
+        """测试重试规则创建"""
+        rule = RetryRule(status=429, max_retries=10, delay=2.0, jitter=1.0)
+        assert rule.status == 429
+        assert rule.max_retries == 10
+        assert rule.delay == 2.0
+        assert rule.jitter == 1.0
+        assert rule.body_contains is None
+
+    def test_retry_rule_with_body_contains(self):
+        """测试带 body_contains 的重试规则"""
+        rule = RetryRule(status=400, body_contains="overloaded", max_retries=5)
+        assert rule.status == 400
+        assert rule.body_contains == "overloaded"
+
+
+class TestUpstream:
+    def test_upstream_creation(self):
+        """测试上游配置创建"""
+        upstream = Upstream(url="https://api.anthropic.com", protocol="anthropic")
+        assert upstream.url == "https://api.anthropic.com"
+        assert upstream.protocol == "anthropic"
+
+    def test_upstream_default_protocol(self):
+        """测试上游默认协议"""
+        upstream = Upstream(url="https://api.example.com")
+        assert upstream.protocol == "anthropic"
+
+
+class TestRoute:
+    def test_route_creation(self):
+        """测试路由规则创建"""
+        route = Route(path="/v1/messages", upstream="anthropic")
+        assert route.path == "/v1/messages"
+        assert route.upstream == "anthropic"
+
+
+class TestConfig:
+    def test_config_defaults(self):
+        """测试配置默认值"""
+        config = Config()
+        assert config.host == "127.0.0.1"
+        assert config.port == 8087
+        assert config.upstreams == {}
+        assert config.routes == []
+        assert config.retry_rules == []
+
+    def test_config_with_values(self):
+        """测试带值的配置"""
+        config = Config(
+            host="0.0.0.0",
+            port=9000,
+            upstreams={"anthropic": Upstream(url="https://api.anthropic.com")},
+            routes=[Route(path="/v1/messages", upstream="anthropic")],
+            retry_rules=[RetryRule(status=429, max_retries=10, delay=2, jitter=1)]
+        )
+        assert config.host == "0.0.0.0"
+        assert config.port == 9000
+        assert len(config.upstreams) == 1
+        assert len(config.routes) == 1
+        assert len(config.retry_rules) == 1
+
+
+class TestLoadConfig:
+    def test_load_config_from_file(self, tmp_path: Path):
+        """测试从文件加载配置"""
+        config_content = """
+host: 0.0.0.0
+port: 9000
+upstreams:
+  test:
+    url: https://api.test.com
+    protocol: anthropic
+routes:
+  - path: /v1/messages
+    upstream: test
+retry_rules:
+  - status: 429
+    max_retries: 5
+    delay: 1
+    jitter: 0.5
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        config = load_config(str(config_file))
+        assert config.host == "0.0.0.0"
+        assert config.port == 9000
+        assert "test" in config.upstreams
+        assert config.upstreams["test"].url == "https://api.test.com"
+        assert len(config.routes) == 1
+        assert len(config.retry_rules) == 1
+
+    def test_load_config_missing_file(self):
+        """测试加载不存在的配置文件返回默认配置"""
+        config = load_config("/nonexistent/path/config.yaml")
+        assert config.host == "127.0.0.1"
+        assert config.port == 8087
+
+    def test_load_config_port_auto(self, tmp_path: Path):
+        """测试 port: auto 配置"""
+        config_content = """
+port: auto
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        config = load_config(str(config_file))
+        assert config.port == "auto"
+
+    def test_load_config_env_override(self, tmp_path: Path, monkeypatch):
+        """测试环境变量覆盖端口"""
+        monkeypatch.setenv("LLM_ROUTE_PORT", "9999")
+
+        config_content = "port: 8087\n"
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        config = load_config(str(config_file))
+        assert config.port == 9999
