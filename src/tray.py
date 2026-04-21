@@ -288,10 +288,13 @@ class TrayManager:
                 print(f"设置开机自启失败: {e}")
 
     def _update_menu(self):
-        """更新图标（菜单会在下次打开时自动获取最新状态）"""
+        """更新菜单和图标"""
         if self.tray:
-            # 只更新图标颜色
+            # 更新图标颜色
             self._update_icon()
+            # 完全替换菜单来强制刷新
+            self.tray.menu = self._create_menu()
+            self.tray.update_menu()
 
     def _quit(self):
         """退出程序"""
