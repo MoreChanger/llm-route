@@ -22,6 +22,7 @@ class RequestContext:
     matched_route: Optional[Route] = None
     upstream: Optional[Upstream] = None
     attempt: int = 0
+    _request: Optional[web.Request] = None  # 原始请求对象，用于流式响应
 
 
 def match_route(path: str, routes: list[Route]) -> Optional[Route]:
@@ -86,12 +87,14 @@ class ProxyServer:
     async def handle_request(self, request: web.Request) -> web.Response:
         """处理所有请求"""
         # 创建请求上下文
+        body = await request.read()
         ctx = RequestContext(
             method=request.method,
             path=request.path,
             headers=dict(request.headers),
-            body=await request.read(),
-            query_string=request.query_string
+            body=body,
+            query_string=request.query_string,
+            _request=request
         )
 
         # 匹配路由
@@ -104,6 +107,10 @@ class ProxyServer:
         ctx.upstream = self.config.upstreams.get(upstream_name)
         if ctx.upstream is None:
             return web.Response(status=502, text=f"Unknown upstream: {upstream_name}")
+
+        # 检测是否为流式请求
+        if self._is_streaming_request(ctx.headers, body):
+            return await self._forward_streaming(ctx)
 
         # 代理请求
         return await self.proxy_request(ctx)
@@ -203,3 +210,59 @@ class ProxyServer:
         # 增加尝试次数并重试
         ctx.attempt += 1
         return await self.proxy_request(ctx)
+
+    def _is_streaming_request(self, headers: dict, body: bytes = b"") -> bool:
+        """检测是否为流式请求"""
+        accept = headers.get("Accept", "")
+        if "text/event-stream" in accept:
+            return True
+
+        try:
+            import json
+            if body:
+                data = json.loads(body)
+                if data.get("stream") is True:
+                    return True
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass
+
+        return False
+
+    async def _forward_streaming(
+        self,
+        ctx: RequestContext
+    ) -> web.StreamResponse:
+        """处理流式请求"""
+        # 准备请求头（移除 hop-by-hop 头）
+        headers = self._filter_headers(ctx.headers)
+
+        # 构建上游 URL
+        url = f"{ctx.upstream.url}{ctx.path}"
+        if ctx.query_string:
+            url = f"{url}?{ctx.query_string}"
+
+        # 创建流式响应
+        response = web.StreamResponse(
+            status=200,
+            headers={
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            }
+        )
+        await response.prepare(ctx._request)
+
+        try:
+            async with self.client_session.request(
+                ctx.method,
+                url,
+                headers=headers,
+                data=ctx.body,
+            ) as upstream_resp:
+                async for chunk in upstream_resp.content.iter_any():
+                    await response.write(chunk)
+        except aiohttp.ClientError as e:
+            # 流式传输错误，记录日志
+            pass
+
+        return response

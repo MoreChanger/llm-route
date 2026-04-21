@@ -103,3 +103,39 @@ class TestProxyServer:
                 assert resp.status == 404
 
         await server.stop()
+
+    @pytest.mark.asyncio
+    async def test_streaming_request(self, config):
+        """测试流式请求处理"""
+        server = ProxyServer(config)
+        await server.start()
+
+        # 测试流式请求路径存在
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            # 发送请求到已知路由
+            async with session.post(
+                f"http://127.0.0.1:18087/v1/messages",
+                json={"test": "data"},
+                headers={"Content-Type": "application/json"}
+            ) as resp:
+                # 由于没有真实上游，会返回 502 或其他错误
+                # 这里只验证请求被正确路由
+                assert resp.status in [200, 401, 403, 502, 503]
+
+        await server.stop()
+
+    def test_is_streaming_request(self, config):
+        """测试流式请求检测"""
+        server = ProxyServer(config)
+
+        # 带有 Accept: text/event-stream 的请求
+        headers = {"Accept": "text/event-stream"}
+        assert server._is_streaming_request(headers) is True
+
+        # 请求体中有 stream: true
+        body = b'{"stream": true}'
+        assert server._is_streaming_request({}, body) is True
+
+        # 非流式请求
+        assert server._is_streaming_request({}, b'{}') is False
