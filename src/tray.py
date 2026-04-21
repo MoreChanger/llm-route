@@ -135,76 +135,75 @@ class TrayManager:
 
     def _change_port(self):
         """更换端口"""
-        import tkinter as tk
-        from tkinter import messagebox
+        # 使用 pystray 的方式在主线程弹出对话框
+        result = {"port": None}
 
-        def ask_port():
+        def show_dialog():
+            import tkinter as tk
+            from tkinter import messagebox
+
             root = tk.Tk()
-            root.withdraw()
+            root.title("更换端口")
+            root.geometry("320x130")
+            root.resizable(False, False)
+
+            # 确保窗口在最前面
+            root.attributes('-topmost', True)
+            root.focus_force()
 
             current_port = self.proxy_server.config.port
 
-            # 创建自定义对话框
-            dialog = tk.Toplevel(root)
-            dialog.title("更换端口")
-            dialog.geometry("320x130")
-            dialog.resizable(False, False)
-
-            # 确保对话框在最前面
-            dialog.attributes('-topmost', True)
-            dialog.focus_force()
-
-            tk.Label(dialog, text="请输入新端口号（1-65535）：").pack(pady=10)
+            tk.Label(root, text="请输入新端口号（1-65535）：").pack(pady=15)
 
             port_var = tk.StringVar(value=str(current_port))
-            entry = tk.Entry(dialog, textvariable=port_var, width=25)
+            entry = tk.Entry(root, textvariable=port_var, width=25)
             entry.pack(pady=5)
             entry.select_range(0, tk.END)
             entry.focus_set()
-
-            result = {"port": None}
 
             def on_ok(event=None):
                 try:
                     port_str = port_var.get().strip()
                     if port_str.lower() == "auto":
                         result["port"] = "auto"
-                        dialog.destroy()
+                        root.destroy()
                     else:
                         port = int(port_str)
                         if 1 <= port <= 65535:
                             result["port"] = port
-                            dialog.destroy()
+                            root.destroy()
                         else:
-                            messagebox.showerror("错误", "端口必须在 1-65535 之间", parent=dialog)
+                            messagebox.showerror("错误", "端口必须在 1-65535 之间", parent=root)
                 except ValueError:
-                    messagebox.showerror("错误", "请输入有效的端口号", parent=dialog)
+                    messagebox.showerror("错误", "请输入有效的端口号", parent=root)
 
             def on_auto():
                 result["port"] = "auto"
-                dialog.destroy()
+                root.destroy()
+
+            def on_cancel():
+                root.destroy()
 
             # 绑定回车键
             entry.bind('<Return>', on_ok)
 
-            btn_frame = tk.Frame(dialog)
-            btn_frame.pack(pady=10)
+            btn_frame = tk.Frame(root)
+            btn_frame.pack(pady=15)
 
             tk.Button(btn_frame, text="确定", command=on_ok, width=8).pack(side=tk.LEFT, padx=5)
             tk.Button(btn_frame, text="自动分配", command=on_auto, width=8).pack(side=tk.LEFT, padx=5)
-            tk.Button(btn_frame, text="取消", command=dialog.destroy, width=8).pack(side=tk.LEFT, padx=5)
+            tk.Button(btn_frame, text="取消", command=on_cancel, width=8).pack(side=tk.LEFT, padx=5)
 
-            # 取消 topmost，让用户可以操作其他窗口
-            dialog.after(100, lambda: dialog.attributes('-topmost', False))
+            # 运行主循环
+            root.mainloop()
 
-            dialog.wait_window()
-            root.destroy()
+        # 在新线程中运行对话框
+        thread = threading.Thread(target=show_dialog, daemon=False)
+        thread.start()
+        thread.join(timeout=30)  # 等待对话框关闭
 
-            return result["port"]
-
-        new_port = ask_port()
-        if new_port is not None:
-            self.on_port_change(new_port)
+        if result["port"] is not None:
+            self.on_port_change(result["port"])
             self._update_menu()
 
     def _toggle_auto_start(self):
