@@ -109,8 +109,18 @@ async def run_with_tray(server: ProxyServer):
 
         asyncio.run_coroutine_threadsafe(change(), loop)
 
+    def on_toggle_service():
+        """切换服务状态回调"""
+        async def toggle():
+            if server.runner is not None:
+                await server.stop()
+            else:
+                await server.start()
+
+        asyncio.run_coroutine_threadsafe(toggle(), loop)
+
     # 在单独线程中运行托盘
-    tray = TrayManager(server, on_exit, on_port_change)
+    tray = TrayManager(server, on_exit, on_port_change, on_toggle_service)
 
     import threading
     tray_thread = threading.Thread(target=tray.run, daemon=True)

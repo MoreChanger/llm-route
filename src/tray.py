@@ -18,17 +18,20 @@ class TrayManager:
         self,
         proxy_server,
         on_exit: Callable[[], None],
-        on_port_change: Callable[[int], None]
+        on_port_change: Callable[[int], None],
+        on_toggle_service: Callable[[], None]
     ):
         """
         Args:
             proxy_server: ProxyServer 实例
             on_exit: 退出回调
             on_port_change: 端口变更回调
+            on_toggle_service: 切换服务状态回调
         """
         self.proxy_server = proxy_server
         self.on_exit = on_exit
         self.on_port_change = on_port_change
+        self.on_toggle_service = on_toggle_service
         self.tray: Optional[pystray.Icon] = None
         self._is_running = False
         self._auto_start = self._check_auto_start()
@@ -91,14 +94,17 @@ class TrayManager:
 
     def _get_status_text(self, icon) -> str:
         """获取状态文本"""
-        if self._is_running:
+        # 根据服务器实际状态判断
+        is_running = self.proxy_server.runner is not None
+        if is_running:
             port = self.proxy_server.config.port
             return f"● 服务运行中 :{port}"
         return "○ 服务已停止"
 
     def _get_service_text(self, icon) -> str:
         """获取服务状态文本"""
-        return "停止服务" if self._is_running else "启动服务"
+        is_running = self.proxy_server.runner is not None
+        return "停止服务" if is_running else "启动服务"
 
     def _get_autostart_text(self, icon) -> str:
         """获取开机自启文本"""
@@ -123,22 +129,10 @@ class TrayManager:
 
     def _toggle_service(self):
         """切换服务状态"""
-        import asyncio
-
-        async def toggle():
-            if self._is_running:
-                await self.proxy_server.stop()
-                self._is_running = False
-            else:
-                await self.proxy_server.start()
-                self._is_running = True
-            self._update_menu()
-
-        # 在事件循环中执行
-        asyncio.run_coroutine_threadsafe(
-            toggle(),
-            asyncio.get_event_loop()
-        )
+        # 使用回调函数，由主线程的事件循环处理
+        self.on_toggle_service()
+        # 更新菜单显示
+        self._update_menu()
 
     def _change_port(self):
         """更换端口"""
