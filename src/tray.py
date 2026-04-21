@@ -136,7 +136,7 @@ class TrayManager:
     def _change_port(self):
         """更换端口"""
         import tkinter as tk
-        from tkinter import simpledialog, messagebox
+        from tkinter import messagebox
 
         def ask_port():
             root = tk.Tk()
@@ -147,20 +147,24 @@ class TrayManager:
             # 创建自定义对话框
             dialog = tk.Toplevel(root)
             dialog.title("更换端口")
-            dialog.geometry("300x120")
+            dialog.geometry("320x130")
             dialog.resizable(False, False)
+
+            # 确保对话框在最前面
+            dialog.attributes('-topmost', True)
+            dialog.focus_force()
 
             tk.Label(dialog, text="请输入新端口号（1-65535）：").pack(pady=10)
 
             port_var = tk.StringVar(value=str(current_port))
-            entry = tk.Entry(dialog, textvariable=port_var, width=20)
+            entry = tk.Entry(dialog, textvariable=port_var, width=25)
             entry.pack(pady=5)
             entry.select_range(0, tk.END)
-            entry.focus()
+            entry.focus_set()
 
             result = {"port": None}
 
-            def on_ok():
+            def on_ok(event=None):
                 try:
                     port_str = port_var.get().strip()
                     if port_str.lower() == "auto":
@@ -172,13 +176,16 @@ class TrayManager:
                             result["port"] = port
                             dialog.destroy()
                         else:
-                            messagebox.showerror("错误", "端口必须在 1-65535 之间")
+                            messagebox.showerror("错误", "端口必须在 1-65535 之间", parent=dialog)
                 except ValueError:
-                    messagebox.showerror("错误", "请输入有效的端口号")
+                    messagebox.showerror("错误", "请输入有效的端口号", parent=dialog)
 
             def on_auto():
                 result["port"] = "auto"
                 dialog.destroy()
+
+            # 绑定回车键
+            entry.bind('<Return>', on_ok)
 
             btn_frame = tk.Frame(dialog)
             btn_frame.pack(pady=10)
@@ -186,6 +193,9 @@ class TrayManager:
             tk.Button(btn_frame, text="确定", command=on_ok, width=8).pack(side=tk.LEFT, padx=5)
             tk.Button(btn_frame, text="自动分配", command=on_auto, width=8).pack(side=tk.LEFT, padx=5)
             tk.Button(btn_frame, text="取消", command=dialog.destroy, width=8).pack(side=tk.LEFT, padx=5)
+
+            # 取消 topmost，让用户可以操作其他窗口
+            dialog.after(100, lambda: dialog.attributes('-topmost', False))
 
             dialog.wait_window()
             root.destroy()
