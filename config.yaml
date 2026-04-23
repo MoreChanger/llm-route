@@ -1,6 +1,6 @@
 host: 127.0.0.1
 port: 8087
-log_level: 3
+log_level: 2
 upstreams:
   anthropic:
     url: https://modelservice.jdcloud.com/coding/anthropic
@@ -8,6 +8,11 @@ upstreams:
   openai:
     url: https://modelservice.jdcloud.com/coding/openai
     protocol: openai
+  # 新增：Ollama 示例，启用 Responses 转换
+  # ollama:
+  #   url: http://localhost:11434/v1
+  #   protocol: openai
+  #   convert_responses: true
 routes:
 - path: /v1/messages
   upstream: anthropic
@@ -17,6 +22,9 @@ routes:
   upstream: openai
 - path: /models
   upstream: anthropic
+  # 新增：/responses 路由示例
+  # - path: /responses
+  #   upstream: ollama
 retry_rules:
 - status: 400
   body_contains: overloaded
