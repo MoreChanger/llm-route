@@ -24,6 +24,7 @@ class Upstream:
     """上游服务配置"""
     url: str
     protocol: str = "anthropic"
+    convert_responses: bool = False  # 是否转换 /responses 为 /v1/chat/completions
 
 
 @dataclass
@@ -158,7 +159,8 @@ def load_config(config_path: str) -> Config:
     for name, upstream_data in upstreams_data.items():
         config.upstreams[name] = Upstream(
             url=upstream_data["url"],
-            protocol=upstream_data.get("protocol", "anthropic")
+            protocol=upstream_data.get("protocol", "anthropic"),
+            convert_responses=upstream_data.get("convert_responses", False)
         )
 
     # 加载路由配置

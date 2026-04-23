@@ -128,3 +128,37 @@ port: auto
 
         config = load_config(str(config_file))
         assert config.port == 9999
+
+
+class TestUpstreamConvertResponses:
+    def test_upstream_convert_responses_default(self):
+        """测试默认不转换"""
+        upstream = Upstream(url="https://api.example.com")
+        assert upstream.convert_responses is False
+
+    def test_upstream_convert_responses_true(self):
+        """测试启用转换"""
+        upstream = Upstream(
+            url="https://api.example.com",
+            convert_responses=True
+        )
+        assert upstream.convert_responses is True
+
+    def test_load_config_with_convert_responses(self, tmp_path: Path):
+        """测试从配置文件加载 convert_responses"""
+        config_content = """
+upstreams:
+  ollama:
+    url: http://localhost:11434/v1
+    protocol: openai
+    convert_responses: true
+  openai:
+    url: https://api.openai.com
+    protocol: openai
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        config = load_config(str(config_file))
+        assert config.upstreams["ollama"].convert_responses is True
+        assert config.upstreams["openai"].convert_responses is False
