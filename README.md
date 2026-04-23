@@ -9,6 +9,7 @@
 - **反向代理** — 支持 Anthropic 和 OpenAI 协议，根据路径自动路由
 - **智能重试** — 上游返回 400/429/500 等错误时自动重试
 - **SSE 流式支持** — 支持流式请求，出错时自动重试
+- **Responses API 转换** — 将 OpenAI Responses API 转换为 Chat Completions API，兼容更多模型服务
 - **系统托盘** — 最小化到托盘，右键菜单控制
 - **端口管理** — 自动检测端口占用，支持手动指定或随机分配
 
@@ -29,11 +30,14 @@ upstreams:
   openai:
     url: https://api.openai.com
     protocol: openai
+    convert_responses: true  # 启用 Responses API 转换
 
 routes:
   - path: /v1/messages
     upstream: anthropic
   - path: /v1/chat/completions
+    upstream: openai
+  - path: /v1/responses
     upstream: openai
 
 retry_rules:
@@ -92,8 +96,34 @@ export OPENAI_BASE_URL=http://127.0.0.1:8087
 
 **日志窗口：**
 - 支持分页浏览（50/100/200/500/1000 行/页）
+- 打开时自动跳转到最新日志
 - 自动刷新最新日志
 - 可跳转指定页码
+
+## Responses API 转换
+
+支持将 OpenAI Responses API 请求转换为 Chat Completions API 格式，使不支持 Responses API 的模型服务也能兼容。
+
+**启用方式：**
+
+在 upstream 配置中添加 `convert_responses: true`，并添加 `/v1/responses` 路由：
+
+```yaml
+upstreams:
+  openai:
+    url: https://your-api-endpoint
+    protocol: openai
+    convert_responses: true
+
+routes:
+  - path: /v1/responses
+    upstream: openai
+```
+
+**转换说明：**
+- 请求转换：Responses API 的 `input` 字段转换为 Chat Completions 的 `messages`
+- 响应转换：Chat Completions 流式响应转换为 Responses API SSE 事件格式
+- 支持流式和非流式请求
 
 ## 预设
 
