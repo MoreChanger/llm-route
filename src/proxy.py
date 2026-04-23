@@ -85,8 +85,9 @@ class ProxyServer:
         self.app = web.Application()
         self.app.router.add_route("*", "/{path:.*}", self.handle_request)
 
-        # 创建 HTTP 客户端会话
-        self.client_session = aiohttp.ClientSession()
+        # 创建 HTTP 客户端会话（设置超时）
+        timeout = aiohttp.ClientTimeout(total=120, connect=30)
+        self.client_session = aiohttp.ClientSession(timeout=timeout)
 
         # 启动服务器
         self.runner = web.AppRunner(self.app)
@@ -348,7 +349,7 @@ class ProxyServer:
     def _should_convert_responses(self, ctx: RequestContext) -> bool:
         """判断是否需要转换 Responses API"""
         return (
-            ctx.path == "/responses" and
+            ctx.path == "/v1/responses" and
             ctx.upstream is not None and
             ctx.upstream.convert_responses
         )
@@ -453,11 +454,39 @@ class ProxyServer:
         await response.prepare(ctx._request)
 
         try:
+            # 简化请求头，只保留必要的认证信息
+            simple_headers = {
+                "Content-Type": "application/json",
+                "Authorization": headers.get("Authorization", ""),
+            }
+            if "x-api-key" in headers:
+                simple_headers["x-api-key"] = headers["x-api-key"]
             async with self.client_session.post(
                 url,
                 json=chat_body,
-                headers=headers
+                headers=simple_headers
             ) as upstream_resp:
+                # 检查上游响应状态
+                if upstream_resp.status >= 400:
+                    # 上游返回错误，直接转发错误响应
+                    error_body = await upstream_resp.read()
+                    elapsed_ms = (time.time() - ctx.start_time) * 1000
+                    self.log_manager.log_request(
+                        method=ctx.method,
+                        path=ctx.path,
+                        upstream=f"{ctx.matched_route.upstream} (converted)",
+                        status_code=upstream_resp.status,
+                        elapsed_ms=elapsed_ms,
+                        retries=ctx.attempt,
+                        request_body=json.dumps(chat_body),
+                        response_body=error_body.decode('utf-8', errors='ignore')
+                    )
+                    return web.Response(
+                        status=upstream_resp.status,
+                        body=error_body,
+                        content_type="application/json"
+                    )
+
                 async for chunk in self.responses_converter.convert_stream(
                     upstream_resp.content.iter_any(),
                     responses_req

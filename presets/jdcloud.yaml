@@ -7,14 +7,17 @@ upstreams:
   openai:
     url: https://modelservice.jdcloud.com/coding/openai
     protocol: openai
+    convert_responses: true
 
 # 路径路由规则
 routes:
   - path: /v1/messages
     upstream: anthropic
   - path: /v1/models
-    upstream: anthropic
+    upstream: openai
   - path: /v1/chat/completions
+    upstream: openai
+  - path: /v1/responses
     upstream: openai
   - path: /models
     upstream: anthropic

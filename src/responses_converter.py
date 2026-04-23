@@ -58,14 +58,20 @@ class ResponsesConverter:
 
         input 可能是：
         - 字符串：单轮用户输入
-        - 字典列表：多轮对话
+        - 字典列表：多轮对话，可能格式有：
+          - {"type": "message", "role": "user", "content": "..."}
+          - {"role": "user", "content": [{"type": "input_text", "text": "..."}]}
         """
         if isinstance(input_data, str):
             return [{"role": "user", "content": input_data}]
 
         messages = []
         for item in input_data:
-            if isinstance(item, dict) and item.get("type") == "message":
+            if not isinstance(item, dict):
+                continue
+
+            # 格式1: {"type": "message", "role": "user", "content": "..."}
+            if item.get("type") == "message":
                 content = item.get("content", "")
                 # 处理列表格式内容
                 if isinstance(content, list):
@@ -84,6 +90,27 @@ class ResponsesConverter:
                     "role": item.get("role", "user"),
                     "content": content
                 })
+            # 格式2: {"role": "user", "content": [{"type": "input_text", "text": "..."}]}
+            elif "role" in item and "content" in item:
+                content = item.get("content", "")
+                # 处理列表格式内容
+                if isinstance(content, list):
+                    text = ""
+                    for content_item in content:
+                        if isinstance(content_item, dict):
+                            if content_item.get("type") == "input_text":
+                                text += content_item.get("text", "")
+                            elif content_item.get("type") == "text":
+                                text += content_item.get("text", "")
+                        elif isinstance(content_item, str):
+                            text += content_item
+                    content = text
+
+                messages.append({
+                    "role": item.get("role", "user"),
+                    "content": content
+                })
+
         return messages
 
     def _convert_tools(self, tools: list) -> list:
@@ -178,21 +205,26 @@ class ResponsesConverter:
             Responses API SSE 事件字节
         """
         response_id = self.sessions.generate_response_id()
+        msg_id = f"msg_{response_id}"
 
         # 1. 发送 response.created 事件
         yield self._format_sse("response.created", {
-            "id": response_id,
-            "model": req.model,
-            "previous_response_id": req.previous_response_id,
-            "status": "in_progress"
+            "type": "response.created",
+            "response": {
+                "id": response_id,
+                "model": req.model,
+                "previous_response_id": req.previous_response_id,
+                "status": "in_progress"
+            }
         })
 
         # 2. 发送 output_item.added 事件
         yield self._format_sse("response.output_item.added", {
+            "type": "response.output_item.added",
             "output_index": 0,
             "item": {
                 "type": "message",
-                "id": f"msg_{response_id}",
+                "id": msg_id,
                 "role": "assistant",
                 "status": "in_progress"
             }
@@ -205,14 +237,17 @@ class ResponsesConverter:
             for event in events:
                 if event.get("delta"):
                     full_content += event["delta"]
+                # 添加 item_id
+                event["item_id"] = msg_id
                 yield self._format_sse(event.get("event", "response.output_text.delta"), event)
 
         # 4. 发送 output_item.done 事件
         yield self._format_sse("response.output_item.done", {
+            "type": "response.output_item.done",
             "output_index": 0,
             "item": {
                 "type": "message",
-                "id": f"msg_{response_id}",
+                "id": msg_id,
                 "role": "assistant",
                 "content": [{"type": "output_text", "text": full_content}],
                 "status": "completed"
@@ -221,8 +256,19 @@ class ResponsesConverter:
 
         # 5. 发送 response.completed 事件
         yield self._format_sse("response.completed", {
-            "id": response_id,
-            "status": "completed"
+            "type": "response.completed",
+            "response": {
+                "id": response_id,
+                "model": req.model,
+                "previous_response_id": req.previous_response_id,
+                "status": "completed",
+                "output": [{
+                    "type": "message",
+                    "id": msg_id,
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": full_content}]
+                }]
+            }
         })
 
         # 6. 保存会话
@@ -261,7 +307,7 @@ class ResponsesConverter:
             if content:
                 events.append({
                     "event": "response.output_text.delta",
-                    "type": "output_text",
+                    "type": "response.output_text.delta",
                     "delta": content,
                     "output_index": choice.get("index", 0),
                     "content_index": 0
@@ -270,5 +316,5 @@ class ResponsesConverter:
         return events
 
     def _format_sse(self, event: str, data: dict) -> bytes:
-        """格式化为 SSE 事件"""
-        return f"event: {event}\ndata: {json.dumps(data)}\n\n".encode("utf-8")
+        """格式化为 SSE 事件（使用 data-only 格式，不包含 event 行）"""
+        return f"data: {json.dumps(data)}\n\n".encode("utf-8")

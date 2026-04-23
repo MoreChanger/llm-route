@@ -132,7 +132,10 @@ class LogWindow:
 
         # 启动更新
         self._running = True
-        self._load_page(1, initial=True)
+        # 先获取总页数，然后加载最后一页（最新日志）
+        _, total_pages, _ = self.get_logs_page(1, self._page_size)
+        self._total_pages = total_pages
+        self._load_page(total_pages if total_pages > 0 else 1, initial=True)
         self._schedule_auto_refresh()
 
         # 运行主循环
