@@ -4,7 +4,7 @@ import asyncio
 from unittest.mock import MagicMock, patch, AsyncMock
 from aiohttp import web
 
-from src.proxy import ProxyServer, match_route
+from src.proxy import ProxyServer, match_route, RequestContext
 from src.config import Config, Upstream, Route, RetryRule
 from src.log_file import LogManager
 
@@ -152,4 +152,108 @@ class TestProxyServer:
         # 非流式请求
         assert server._is_streaming_request({}, b'{}') is False
 
+        log_manager.stop()
+
+
+# 在 tests/test_proxy.py 末尾添加
+
+import json
+from src.responses_models import ResponsesRequest
+
+
+class TestProxyResponsesHandling:
+    @pytest.fixture
+    def config_with_convert(self):
+        """带转换功能的测试配置"""
+        return Config(
+            host="127.0.0.1",
+            port=18088,
+            upstreams={
+                "ollama": Upstream(
+                    url="http://localhost:11434/v1",
+                    protocol="openai",
+                    convert_responses=True
+                ),
+                "openai": Upstream(
+                    url="https://api.openai.com",
+                    protocol="openai",
+                    convert_responses=False
+                ),
+            },
+            routes=[
+                Route(path="/responses", upstream="ollama"),
+                Route(path="/v1/chat/completions", upstream="openai"),
+            ],
+            retry_rules=[]
+        )
+
+    @pytest.fixture
+    def log_manager(self):
+        """测试日志管理器"""
+        lm = LogManager()
+        lm.start(log_level=2)
+        return lm
+
+    def test_should_convert_responses_true(self, config_with_convert, log_manager):
+        """测试需要转换的情况"""
+        server = ProxyServer(config_with_convert, log_manager)
+
+        ctx = RequestContext(
+            method="POST",
+            path="/responses",
+            headers={},
+            body=b'{}',
+            upstream=config_with_convert.upstreams["ollama"]
+        )
+
+        assert server._should_convert_responses(ctx) is True
+        log_manager.stop()
+
+    def test_should_convert_responses_false_path(self, config_with_convert, log_manager):
+        """测试路径不匹配"""
+        server = ProxyServer(config_with_convert, log_manager)
+
+        ctx = RequestContext(
+            method="POST",
+            path="/v1/chat/completions",
+            headers={},
+            body=b'{}',
+            upstream=config_with_convert.upstreams["ollama"]
+        )
+
+        assert server._should_convert_responses(ctx) is False
+        log_manager.stop()
+
+    def test_should_convert_responses_false_flag(self, config_with_convert, log_manager):
+        """测试标志为 False"""
+        server = ProxyServer(config_with_convert, log_manager)
+
+        ctx = RequestContext(
+            method="POST",
+            path="/responses",
+            headers={},
+            body=b'{}',
+            upstream=config_with_convert.upstreams["openai"]
+        )
+
+        assert server._should_convert_responses(ctx) is False
+        log_manager.stop()
+
+    def test_parse_responses_request(self, config_with_convert, log_manager):
+        """测试解析 Responses 请求"""
+        server = ProxyServer(config_with_convert, log_manager)
+
+        body = json.dumps({
+            "model": "gpt-4",
+            "input": "Hello",
+            "instructions": "Be helpful",
+            "stream": True
+        }).encode()
+
+        req = server._parse_responses_request(body)
+
+        assert req.model == "gpt-4"
+        assert req.input == "Hello"
+        assert req.instructions == "Be helpful"
+        assert req.stream is True
         log_manager.stop()

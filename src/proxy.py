@@ -1,5 +1,6 @@
 """HTTP 代理服务模块"""
 import asyncio
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -11,6 +12,9 @@ from aiohttp import web
 from src.config import Config, Route, Upstream
 from src.retry import calculate_delay
 from src.log_file import LogManager
+from src.responses_converter import ResponsesConverter
+from src.session_manager import SessionManager
+from src.responses_models import ResponsesRequest
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -58,6 +62,10 @@ class ProxyServer:
         self.runner: Optional[web.AppRunner] = None
         self.site: Optional[web.TCPSite] = None
         self.client_session: Optional[aiohttp.ClientSession] = None
+
+        # 新增：Responses 转换器
+        self.session_manager = SessionManager()
+        self.responses_converter = ResponsesConverter(self.session_manager)
 
     def log(self, message: str, level: str = "INFO"):
         """记录日志"""
@@ -138,6 +146,10 @@ class ProxyServer:
             elapsed_ms = (time.time() - ctx.start_time) * 1000
             self.log(f"{ctx.method} {ctx.path} -> 502 Unknown upstream: {upstream_name} ({elapsed_ms:.0f}ms)", "ERROR")
             return web.Response(status=502, text=f"Unknown upstream: {upstream_name}")
+
+        # 新增：Responses API 转换分支
+        if self._should_convert_responses(ctx):
+            return await self._handle_responses(ctx)
 
         # 检测是否为流式请求
         if self._is_streaming_request(ctx.headers, body):
@@ -332,3 +344,154 @@ class ProxyServer:
             self.log(f"{ctx.method} {ctx.path} -> {ctx.matched_route.upstream} [STREAMING ERROR] {elapsed_ms:.0f}ms - {str(e)}", "ERROR")
 
         return response
+
+    def _should_convert_responses(self, ctx: RequestContext) -> bool:
+        """判断是否需要转换 Responses API"""
+        return (
+            ctx.path == "/responses" and
+            ctx.upstream is not None and
+            ctx.upstream.convert_responses
+        )
+
+    def _parse_responses_request(self, body: bytes) -> ResponsesRequest:
+        """解析 Responses API 请求"""
+        req_body = json.loads(body)
+        return ResponsesRequest(
+            model=req_body.get("model", ""),
+            input=req_body.get("input", []),
+            instructions=req_body.get("instructions"),
+            previous_response_id=req_body.get("previous_response_id"),
+            tools=req_body.get("tools"),
+            stream=req_body.get("stream", False)
+        )
+
+    async def _handle_responses(self, ctx: RequestContext) -> web.Response:
+        """处理 /responses 请求（转换模式）"""
+        try:
+            responses_req = self._parse_responses_request(ctx.body)
+        except (json.JSONDecodeError, KeyError) as e:
+            return web.Response(status=400, text=f"Invalid request: {e}")
+
+        chat_body = self.responses_converter.convert_request(responses_req)
+        url = f"{ctx.upstream.url}/v1/chat/completions"
+        headers = self._filter_headers(ctx.headers)
+        headers["Content-Type"] = "application/json"
+
+        if responses_req.stream:
+            return await self._forward_responses_streaming(
+                ctx, url, headers, chat_body, responses_req
+            )
+        else:
+            return await self._forward_responses(ctx, url, headers, chat_body, responses_req)
+
+    async def _forward_responses(
+        self,
+        ctx: RequestContext,
+        url: str,
+        headers: dict,
+        chat_body: dict,
+        responses_req: ResponsesRequest
+    ) -> web.Response:
+        """非流式：发送 Chat Completions，转换响应"""
+        try:
+            async with self.client_session.post(
+                url,
+                json=chat_body,
+                headers=headers
+            ) as resp:
+                if self._should_retry(resp.status, await resp.read(), ctx.attempt):
+                    return await self._retry_responses(ctx, responses_req)
+
+                chat_resp = await resp.json()
+                responses_resp = self.responses_converter.convert_response(
+                    chat_resp, responses_req
+                )
+
+                elapsed_ms = (time.time() - ctx.start_time) * 1000
+                self.log_manager.log_request(
+                    method=ctx.method,
+                    path=ctx.path,
+                    upstream=f"{ctx.matched_route.upstream} (converted)",
+                    status_code=resp.status,
+                    elapsed_ms=elapsed_ms,
+                    retries=ctx.attempt,
+                    request_body=json.dumps(chat_body),
+                    response_body=json.dumps(responses_resp)
+                )
+
+                return web.Response(
+                    status=200,
+                    body=json.dumps(responses_resp),
+                    content_type="application/json"
+                )
+        except aiohttp.ClientError as e:
+            elapsed_ms = (time.time() - ctx.start_time) * 1000
+            self.log(f"{ctx.method} {ctx.path} -> [ERROR] {elapsed_ms:.0f}ms - {str(e)}", "ERROR")
+
+            if ctx.attempt < self._get_max_retries():
+                return await self._retry_responses(ctx, responses_req)
+            return web.Response(status=502, text=f"Upstream error: {str(e)}")
+
+    async def _forward_responses_streaming(
+        self,
+        ctx: RequestContext,
+        url: str,
+        headers: dict,
+        chat_body: dict,
+        responses_req: ResponsesRequest
+    ) -> web.StreamResponse:
+        """流式：转换 SSE 流"""
+        response = web.StreamResponse(
+            status=200,
+            headers={
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            }
+        )
+        await response.prepare(ctx._request)
+
+        try:
+            async with self.client_session.post(
+                url,
+                json=chat_body,
+                headers=headers
+            ) as upstream_resp:
+                async for chunk in self.responses_converter.convert_stream(
+                    upstream_resp.content.iter_any(),
+                    responses_req
+                ):
+                    await response.write(chunk)
+
+            elapsed_ms = (time.time() - ctx.start_time) * 1000
+            self.log_manager.log_request(
+                method=ctx.method,
+                path=ctx.path,
+                upstream=f"{ctx.matched_route.upstream} (converted/streaming)",
+                status_code=200,
+                elapsed_ms=elapsed_ms,
+                retries=ctx.attempt,
+                request_body=json.dumps(chat_body),
+                response_body="[streaming response]"
+            )
+        except aiohttp.ClientError as e:
+            elapsed_ms = (time.time() - ctx.start_time) * 1000
+            self.log(f"{ctx.method} {ctx.path} -> [STREAMING ERROR] {elapsed_ms:.0f}ms - {str(e)}", "ERROR")
+
+        return response
+
+    async def _retry_responses(
+        self,
+        ctx: RequestContext,
+        responses_req: ResponsesRequest
+    ) -> web.Response:
+        """重试 Responses 请求"""
+        delay = 1.0
+        for rule in self.config.retry_rules:
+            delay = max(delay, rule.delay)
+
+        actual_delay = calculate_delay(ctx.attempt, delay, 0.5)
+        await asyncio.sleep(actual_delay)
+
+        ctx.attempt += 1
+        return await self._handle_responses(ctx)
