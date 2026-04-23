@@ -399,10 +399,11 @@ class ProxyServer:
                 json=chat_body,
                 headers=headers
             ) as resp:
-                if self._should_retry(resp.status, await resp.read(), ctx.attempt):
+                resp_body = await resp.read()
+                if self._should_retry(resp.status, resp_body, ctx.attempt):
                     return await self._retry_responses(ctx, responses_req)
 
-                chat_resp = await resp.json()
+                chat_resp = json.loads(resp_body)
                 responses_resp = self.responses_converter.convert_response(
                     chat_resp, responses_req
                 )
@@ -420,7 +421,7 @@ class ProxyServer:
                 )
 
                 return web.Response(
-                    status=200,
+                    status=resp.status if resp.status >= 400 else 200,
                     body=json.dumps(responses_resp),
                     content_type="application/json"
                 )
