@@ -517,7 +517,7 @@ class ResponsesConverter:
                 })
 
             # 处理 tool_calls
-            tool_calls = delta.get("tool_calls", [])
+            tool_calls = delta.get("tool_calls") or []
             for tool_delta in tool_calls:
                 tool_index = tool_delta.get("index", 0)
                 tool_id = tool_delta.get("id", "")
