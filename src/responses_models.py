@@ -47,3 +47,40 @@ class ResponsesResponse:
     model: str
     output: ResponsesOutput
     previous_response_id: Optional[str] = None
+
+
+@dataclass
+class ToolCallArgumentsDelta:
+    """工具调用参数流式增量事件"""
+    type: str = "response.function_call_arguments.delta"
+    item_id: str = ""
+    output_index: int = 0
+    delta: str = ""
+
+
+@dataclass
+class ToolCallArgumentsDone:
+    """工具调用参数完成事件"""
+    type: str = "response.function_call_arguments.done"
+    id: str = ""
+    output_index: int = 0
+    arguments: str = ""
+
+
+@dataclass
+class FunctionCallOutput:
+    """工具调用输出（客户端提交的执行结果）"""
+    type: str = "function_call_output"
+    call_id: str = ""
+    output: str = ""
+
+
+@dataclass
+class FunctionCall:
+    """工具调用"""
+    type: str = "function_call"
+    id: str = ""
+    call_id: str = ""
+    name: str = ""
+    arguments: str = ""
+    status: str = "completed"
