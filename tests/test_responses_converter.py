@@ -119,11 +119,14 @@ class TestResponsesConverter:
 
         assert result["id"].startswith("resp_")
         assert result["model"] == "gpt-4"
-        assert result["output"]["type"] == "message"
-        assert result["output"]["role"] == "assistant"
-        assert len(result["output"]["content"]) == 1
-        assert result["output"]["content"][0]["type"] == "output_text"
-        assert result["output"]["content"][0]["text"] == "Hi there!"
+        # output is now a list
+        assert isinstance(result["output"], list)
+        assert len(result["output"]) == 1
+        assert result["output"][0]["type"] == "message"
+        assert result["output"][0]["role"] == "assistant"
+        assert len(result["output"][0]["content"]) == 1
+        assert result["output"][0]["content"][0]["type"] == "output_text"
+        assert result["output"][0]["content"][0]["text"] == "Hi there!"
 
     def test_convert_response_saves_session(self, converter):
         """测试响应转换保存会话"""
@@ -149,6 +152,7 @@ class TestResponsesConverter:
         data = {"id": "test", "status": "in_progress"}
         result = converter._format_sse("response.created", data)
 
-        assert b"event: response.created" in result
+        # SSE now uses data-only format (no event line)
+        assert b"data: " in result
         assert b'"id": "test"' in result
         assert result.endswith(b"\n\n")

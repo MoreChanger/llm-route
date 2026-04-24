@@ -181,7 +181,7 @@ class TestProxyResponsesHandling:
                 ),
             },
             routes=[
-                Route(path="/responses", upstream="ollama"),
+                Route(path="/v1/responses", upstream="ollama"),
                 Route(path="/v1/chat/completions", upstream="openai"),
             ],
             retry_rules=[]
@@ -200,7 +200,7 @@ class TestProxyResponsesHandling:
 
         ctx = RequestContext(
             method="POST",
-            path="/responses",
+            path="/v1/responses",
             headers={},
             body=b'{}',
             upstream=config_with_convert.upstreams["ollama"]
@@ -230,7 +230,7 @@ class TestProxyResponsesHandling:
 
         ctx = RequestContext(
             method="POST",
-            path="/responses",
+            path="/v1/responses",
             headers={},
             body=b'{}',
             upstream=config_with_convert.upstreams["openai"]
