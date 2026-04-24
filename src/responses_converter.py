@@ -183,6 +183,7 @@ class ResponsesConverter:
 
         # 提取助手消息
         assistant_message = chat_resp.get("choices", [{}])[0].get("message", {})
+        finish_reason = chat_resp.get("choices", [{}])[0].get("finish_reason")
 
         # 保存会话历史
         messages = self.sessions.get_messages(req.previous_response_id)
@@ -192,24 +193,56 @@ class ResponsesConverter:
         messages.append(assistant_message)
         self.sessions.save_session(response_id, messages)
 
+        # 构建输出
+        output = self._convert_output(assistant_message, finish_reason)
+
         # 构建响应
         return {
             "id": response_id,
             "model": chat_resp.get("model", req.model),
-            "output": {
-                "type": "message",
-                "id": f"msg_{response_id}",
-                "role": "assistant",
-                "content": self._convert_output_content(assistant_message),
-                "status": "completed"
-            },
+            "output": output,
             "previous_response_id": req.previous_response_id
         }
 
-    def _convert_output_content(self, message: dict) -> list[dict]:
-        """转换 Chat Completions 消息内容到 Responses 格式"""
-        content = message.get("content", "")
-        return [{"type": "output_text", "text": content}]
+    def _convert_output(self, message: dict, finish_reason: str = None) -> list:
+        """将 Chat Completions 消息转换为 Responses 输出列表"""
+        outputs = []
+
+        # 处理 tool_calls
+        tool_calls = message.get("tool_calls", [])
+        if tool_calls:
+            for tool_call in tool_calls:
+                outputs.append({
+                    "type": "function_call",
+                    "id": tool_call.get("id", ""),
+                    "call_id": tool_call.get("id", ""),
+                    "name": tool_call.get("function", {}).get("name", ""),
+                    "arguments": tool_call.get("function", {}).get("arguments", "{}"),
+                    "status": "completed"
+                })
+
+        # 处理文本内容
+        content = message.get("content")
+        if content:
+            outputs.append({
+                "type": "message",
+                "id": f"msg_{self.sessions.generate_response_id()}",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": content}],
+                "status": "completed"
+            })
+
+        # 如果没有任何输出，添加空消息
+        if not outputs:
+            outputs.append({
+                "type": "message",
+                "id": f"msg_{self.sessions.generate_response_id()}",
+                "role": "assistant",
+                "content": [],
+                "status": "completed"
+            })
+
+        return outputs
 
     # ========== 流式转换 ==========
 
