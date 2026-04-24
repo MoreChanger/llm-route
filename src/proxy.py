@@ -15,7 +15,6 @@ from src.log_file import LogManager
 from src.responses_converter import ResponsesConverter
 from src.session_manager import SessionManager
 from src.responses_models import ResponsesRequest
-from src.anthropic_converter import convert_anthropic_request
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -152,10 +151,6 @@ class ProxyServer:
         # 新增：Responses API 转换分支
         if self._should_convert_responses(ctx):
             return await self._handle_responses(ctx)
-
-        # 新增：Anthropic Messages API 格式转换（京东云等服务商兼容性）
-        if self._should_convert_anthropic(ctx):
-            ctx.body = convert_anthropic_request(ctx.body)
 
         # 检测是否为流式请求
         if self._is_streaming_request(ctx.headers, body):
@@ -357,21 +352,6 @@ class ProxyServer:
             ctx.path == "/v1/responses" and
             ctx.upstream is not None and
             ctx.upstream.convert_responses
-        )
-
-    def _should_convert_anthropic(self, ctx: RequestContext) -> bool:
-        """判断是否需要转换 Anthropic Messages API 格式
-
-        当满足以下条件时进行格式转换：
-        1. 请求路径为 /v1/messages
-        2. 上游配置了 convert_anthropic: true
-        3. 请求方法为 POST
-        """
-        return (
-            ctx.path == "/v1/messages" and
-            ctx.upstream is not None and
-            ctx.upstream.convert_anthropic and
-            ctx.method == "POST"
         )
 
     def _parse_responses_request(self, body: bytes) -> ResponsesRequest:

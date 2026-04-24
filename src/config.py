@@ -25,7 +25,6 @@ class Upstream:
     url: str
     protocol: str = "anthropic"
     convert_responses: bool = False  # 是否转换 /responses 为 /v1/chat/completions
-    convert_anthropic: bool = False  # 是否转换 Anthropic 请求格式（content 数组等）
 
 
 @dataclass
@@ -161,8 +160,7 @@ def load_config(config_path: str) -> Config:
         config.upstreams[name] = Upstream(
             url=upstream_data["url"],
             protocol=upstream_data.get("protocol", "anthropic"),
-            convert_responses=upstream_data.get("convert_responses", False),
-            convert_anthropic=upstream_data.get("convert_anthropic", False)
+            convert_responses=upstream_data.get("convert_responses", False)
         )
 
     # 加载路由配置
