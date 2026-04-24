@@ -139,10 +139,11 @@ class ResponsesConverter:
     def _convert_tools(self, tools: list) -> list:
         """转换工具格式
 
-        Responses API 格式: {"type": "function", "function": {"name": "...", ...}}
-        Chat Completions 格式: {"type": "function", "function": {"name": "...", ...}}
+        Responses API 可能有两种格式:
+        1. {"type": "function", "function": {"name": "...", ...}}  - 标准格式
+        2. {"type": "function", "name": "...", "description": "...", "parameters": {...}}  - 简化格式
 
-        两者格式相同，直接返回即可。
+        Chat Completions 需要格式 1。
         """
         converted = []
         for tool in tools:
@@ -150,9 +151,23 @@ class ResponsesConverter:
                 continue
 
             if tool.get("type") == "function":
-                # Responses API 和 Chat Completions API 的工具格式相同
-                # 都是 {"type": "function", "function": {...}}
-                converted.append(tool)
+                # 检查是否已经是标准格式
+                if "function" in tool and isinstance(tool["function"], dict):
+                    # 标准格式，直接使用
+                    converted.append(tool)
+                elif "name" in tool:
+                    # 简化格式，转换为标准格式
+                    func_data = {"name": tool.get("name", "")}
+                    if "description" in tool:
+                        func_data["description"] = tool["description"]
+                    if "parameters" in tool:
+                        func_data["parameters"] = tool["parameters"]
+                    converted.append({
+                        "type": "function",
+                        "function": func_data
+                    })
+                else:
+                    converted.append(tool)
             else:
                 converted.append(tool)
         return converted
