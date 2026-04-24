@@ -9,10 +9,10 @@
 - **反向代理** — 支持 Anthropic 和 OpenAI 协议，根据路径自动路由
 - **智能重试** — 上游返回 400/429/500 等错误时自动重试
 - **SSE 流式支持** — 支持流式请求，出错时自动重试
-- **Responses API 转换** — 将 OpenAI Responses API 转换为 Chat Completions API，兼容更多模型服务
-  - 支持工具调用（Function Calling）
-  - 支持多轮对话（previous_response_id）
-  - 支持流式和非流式响应
+- **格式转换** — 自动转换请求格式，提高服务商兼容性
+  - Anthropic Messages API：`content` 数组格式自动转换为字符串格式
+  - Responses API：转换为 Chat Completions API，兼容更多模型服务
+- **Responses API 转换** — 支持工具调用（Function Calling）、多轮对话
 - **系统托盘** — 最小化到托盘，右键菜单控制
 - **端口管理** — 自动检测端口占用，支持手动指定或随机分配
 
@@ -109,6 +109,27 @@ export OPENAI_BASE_URL=http://127.0.0.1:8087
 - 打开时自动跳转到最新日志
 - 自动刷新最新日志
 - 可跳转指定页码
+
+## 格式转换
+
+LLM-ROUTE 自动转换请求格式，提高与各服务商的兼容性。
+
+### Anthropic Messages API 格式转换
+
+部分服务商（如京东云）不支持 `content` 数组格式，LLM-ROUTE 会自动转换：
+
+```
+# 数组格式 → 字符串格式
+[{"type": "text", "text": "hello"}] → "hello"
+
+# 多元素数组合并
+[{"type": "text", "text": "hello"}, {"type": "text", "text": " world"}] → "hello world"
+
+# 包含图片等非文本内容，保持原格式
+[{"type": "text", "text": "hello"}, {"type": "image", ...}] → 保持原格式
+```
+
+此功能对 `/v1/messages` 请求自动启用，无需额外配置。
 
 ## Responses API 转换
 
