@@ -1,6 +1,18 @@
 # src/responses_converter.py
-"""Responses API 与 Chat Completions API 转换器"""
+"""Responses API 与 Chat Completions API 转换器
+
+基于 OpenAI 官方 Responses API 规范实现
+https://developers.openai.com/api/docs/guides/responses
+
+主要功能:
+- 将 Responses API 请求转换为 Chat Completions API 请求
+- 将 Chat Completions API 响应转换为 Responses API 响应
+- 支持流式和非流式转换
+- 支持 function calling 双向转换
+"""
 import json
+import time
+import uuid
 from typing import AsyncIterator, Union
 
 from src.responses_models import ResponsesRequest
@@ -8,18 +20,24 @@ from src.session_manager import SessionManager
 
 
 class ResponsesConverter:
-    """Responses API 与 Chat Completions API 双向转换"""
+    """Responses API 与 Chat Completions API 双向转换器
+
+    Responses API 是 OpenAI 的新一代 API，使用 Item 而非 Message。
+    Item 类型包括: message, function_call, function_call_output
+    """
 
     def __init__(self, session_manager: SessionManager):
         self.sessions = session_manager
 
-    # ========== 请求转换 ==========
+    # ============================================================
+    # 请求转换: Responses API -> Chat Completions API
+    # ============================================================
 
     def convert_request(self, req: ResponsesRequest) -> dict:
         """将 Responses 请求转换为 Chat Completions 请求体
 
         Args:
-            req: Responses API 请求
+            req: Responses API 请求对象
 
         Returns:
             Chat Completions API 请求体（字典）
@@ -30,14 +48,14 @@ class ResponsesConverter:
         if req.previous_response_id:
             messages.extend(self.sessions.get_messages(req.previous_response_id))
 
-        # 2. 添加 system 指令
+        # 2. 添加 system 指令（Responses API 使用 instructions 字段）
         if req.instructions:
             messages.append({
                 "role": "system",
                 "content": req.instructions
             })
 
-        # 3. 添加当前输入
+        # 3. 添加当前输入（Responses API 使用 input 字段，可以是字符串或 Item 列表）
         messages.extend(self._parse_input(req.input))
 
         # 4. 构建请求体
@@ -47,20 +65,24 @@ class ResponsesConverter:
             "stream": req.stream
         }
 
-        # 5. 转换工具（如果有）
+        # 5. 转换工具定义（如果有）
         if req.tools:
             body["tools"] = self._convert_tools(req.tools)
 
         return body
 
     def _parse_input(self, input_data: Union[list, str]) -> list[dict]:
-        """解析 Responses input 字段
+        """解析 Responses API 的 input 字段
 
-        input 可能是：
-        - 字符串：单轮用户输入
-        - 字典列表：多轮对话，可能格式有：
-          - {"type": "message", "role": "user", "content": "..."}
-          - {"role": "user", "content": [{"type": "input_text", "text": "..."}]}
+        Responses API input 可以是:
+        - 字符串: 简单的用户输入
+        - Item 列表: 包含 message, function_call, function_call_output 等
+
+        Args:
+            input_data: Responses API 的 input 字段
+
+        Returns:
+            Chat Completions API 的 messages 列表
         """
         if isinstance(input_data, str):
             return [{"role": "user", "content": input_data}]
@@ -70,57 +92,32 @@ class ResponsesConverter:
             if not isinstance(item, dict):
                 continue
 
-            # 格式1: {"type": "message", "role": "user", "content": "..."}
-            if item.get("type") == "message":
-                content = item.get("content", "")
-                # 处理列表格式内容
-                if isinstance(content, list):
-                    text = ""
-                    for content_item in content:
-                        if isinstance(content_item, dict):
-                            if content_item.get("type") == "input_text":
-                                text += content_item.get("text", "")
-                            elif content_item.get("type") == "text":
-                                text += content_item.get("text", "")
-                        elif isinstance(content_item, str):
-                            text += content_item
-                    content = text
+            item_type = item.get("type")
 
+            # Item 类型1: message - 包含角色和内容
+            if item_type == "message":
                 messages.append({
                     "role": item.get("role", "user"),
-                    "content": content
+                    "content": self._extract_text_content(item.get("content", ""))
                 })
-            # 格式2: {"role": "user", "content": [{"type": "input_text", "text": "..."}]}
-            elif "role" in item and "content" in item:
-                content = item.get("content", "")
-                # 处理列表格式内容
-                if isinstance(content, list):
-                    text = ""
-                    for content_item in content:
-                        if isinstance(content_item, dict):
-                            if content_item.get("type") == "input_text":
-                                text += content_item.get("text", "")
-                            elif content_item.get("type") == "text":
-                                text += content_item.get("text", "")
-                        elif isinstance(content_item, str):
-                            text += content_item
-                    content = text
 
+            # 兼容格式: {"role": "user", "content": "..."} (无 type 字段)
+            elif "role" in item and "content" in item and item_type is None:
                 messages.append({
                     "role": item.get("role", "user"),
-                    "content": content
+                    "content": self._extract_text_content(item.get("content", ""))
                 })
-            # 格式3: {"type": "function_call_output", "call_id": "xxx", "output": "结果"}
-            elif item.get("type") == "function_call_output":
-                call_id = item.get("call_id", "")
-                output = item.get("output", "")
+
+            # Item 类型2: function_call_output - 工具调用结果
+            elif item_type == "function_call_output":
                 messages.append({
                     "role": "tool",
-                    "tool_call_id": call_id,
-                    "content": output
+                    "tool_call_id": item.get("call_id", ""),
+                    "content": item.get("output", "")
                 })
-            # 格式4: {"type": "function_call", "id": "xxx", "name": "tool_name", "arguments": "{}"}
-            elif item.get("type") == "function_call":
+
+            # Item 类型3: function_call - 助手的工具调用
+            elif item_type == "function_call":
                 messages.append({
                     "role": "assistant",
                     "content": None,
@@ -136,27 +133,51 @@ class ResponsesConverter:
 
         return messages
 
+    def _extract_text_content(self, content) -> str:
+        """从各种内容格式中提取文本
+
+        内容可以是:
+        - 字符串: 直接返回
+        - 列表: 包含 {"type": "input_text/text", "text": "..."} 的对象列表
+        """
+        if isinstance(content, str):
+            return content
+
+        if isinstance(content, list):
+            text_parts = []
+            for item in content:
+                if isinstance(item, str):
+                    text_parts.append(item)
+                elif isinstance(item, dict):
+                    if item.get("type") in ("input_text", "text", "output_text"):
+                        text_parts.append(item.get("text", ""))
+            return "".join(text_parts)
+
+        return str(content) if content else ""
+
     def _convert_tools(self, tools: list) -> list:
-        """转换工具格式
+        """转换工具定义格式
 
-        Responses API 可能有两种格式:
-        1. {"type": "function", "function": {"name": "...", ...}}  - 标准格式
-        2. {"type": "function", "name": "...", "description": "...", "parameters": {...}}  - 简化格式
+        Responses API 的工具定义使用内部标签多态:
+        {"type": "function", "name": "...", ...}
 
-        Chat Completions 需要格式 1。
+        Chat Completions API 使用外部标签多态:
+        {"type": "function", "function": {"name": "...", ...}}
         """
         converted = []
         for tool in tools:
             if not isinstance(tool, dict):
                 continue
 
-            if tool.get("type") == "function":
-                # 检查是否已经是标准格式
+            tool_type = tool.get("type")
+
+            # function 类型工具
+            if tool_type == "function":
+                # 已经是标准 Chat Completions 格式
                 if "function" in tool and isinstance(tool["function"], dict):
-                    # 标准格式，直接使用
                     converted.append(tool)
+                # Responses API 简化格式，需要转换
                 elif "name" in tool:
-                    # 简化格式，转换为标准格式
                     func_data = {"name": tool.get("name", "")}
                     if "description" in tool:
                         func_data["description"] = tool["description"]
@@ -168,11 +189,16 @@ class ResponsesConverter:
                     })
                 else:
                     converted.append(tool)
+
+            # 内置工具类型 (web_search, file_search, code_interpreter 等)
             else:
                 converted.append(tool)
+
         return converted
 
-    # ========== 响应转换 ==========
+    # ============================================================
+    # 响应转换: Chat Completions API -> Responses API
+    # ============================================================
 
     def convert_response(
         self,
@@ -186,56 +212,63 @@ class ResponsesConverter:
             req: 原始 Responses API 请求
 
         Returns:
-            Responses API 响应（字典）
+            Responses API 响应对象
         """
-        response_id = self.sessions.generate_response_id()
+        response_id = self._generate_id("resp")
 
-        # 提取助手消息
-        assistant_message = chat_resp.get("choices", [{}])[0].get("message", {})
-        finish_reason = chat_resp.get("choices", [{}])[0].get("finish_reason")
+        # 提取响应内容
+        choice = chat_resp.get("choices", [{}])[0]
+        message = choice.get("message", {})
+        finish_reason = choice.get("finish_reason")
+
+        # 构建输出 Items
+        output = self._convert_output_items(message, finish_reason)
 
         # 保存会话历史
-        messages = self.sessions.get_messages(req.previous_response_id)
-        if req.instructions:
-            messages = [{"role": "system", "content": req.instructions}] + messages
-        messages.extend(self._parse_input(req.input))
-        messages.append(assistant_message)
-        self.sessions.save_session(response_id, messages)
+        self._save_conversation(response_id, req, message)
 
-        # 构建输出
-        output = self._convert_output(assistant_message, finish_reason)
-
-        # 构建响应
+        # 构建 Responses API 响应对象
         return {
             "id": response_id,
+            "object": "response",
+            "created_at": int(time.time()),
             "model": chat_resp.get("model", req.model),
             "output": output,
-            "previous_response_id": req.previous_response_id
+            "previous_response_id": req.previous_response_id,
+            "status": "completed"
         }
 
-    def _convert_output(self, message: dict, finish_reason: str = None) -> list:
-        """将 Chat Completions 消息转换为 Responses 输出列表"""
+    def _convert_output_items(self, message: dict, finish_reason: str = None) -> list:
+        """将 Chat Completions message 转换为 Responses output Items
+
+        输出顺序:
+        1. function_call Items (如果有工具调用)
+        2. message Item (如果有文本内容)
+
+        Note: 官方文档说明一个响应中可能同时包含工具调用和文本
+        """
         outputs = []
 
-        # 处理 tool_calls
+        # 处理 tool_calls -> function_call Items
         tool_calls = message.get("tool_calls", [])
-        if tool_calls:
-            for tool_call in tool_calls:
-                outputs.append({
-                    "type": "function_call",
-                    "id": tool_call.get("id", ""),
-                    "call_id": tool_call.get("id", ""),
-                    "name": tool_call.get("function", {}).get("name", ""),
-                    "arguments": tool_call.get("function", {}).get("arguments", "{}"),
-                    "status": "completed"
-                })
+        for tool_call in tool_calls:
+            call_id = tool_call.get("id", "")
+            func = tool_call.get("function", {})
+            outputs.append({
+                "type": "function_call",
+                "id": call_id,
+                "call_id": call_id,  # 用于关联 function_call_output
+                "name": func.get("name", ""),
+                "arguments": func.get("arguments", "{}"),
+                "status": "completed"
+            })
 
-        # 处理文本内容
+        # 处理文本内容 -> message Item
         content = message.get("content")
         if content:
             outputs.append({
                 "type": "message",
-                "id": f"msg_{self.sessions.generate_response_id()}",
+                "id": self._generate_id("msg"),
                 "role": "assistant",
                 "content": [{"type": "output_text", "text": content}],
                 "status": "completed"
@@ -245,7 +278,7 @@ class ResponsesConverter:
         if not outputs:
             outputs.append({
                 "type": "message",
-                "id": f"msg_{self.sessions.generate_response_id()}",
+                "id": self._generate_id("msg"),
                 "role": "assistant",
                 "content": [],
                 "status": "completed"
@@ -253,47 +286,57 @@ class ResponsesConverter:
 
         return outputs
 
-    # ========== 流式转换 ==========
+    # ============================================================
+    # 流式转换: Chat Completions SSE -> Responses SSE
+    # ============================================================
 
     async def convert_stream(
         self,
-        chat_stream,  # aiohttp StreamReader
+        chat_stream,
         req: ResponsesRequest
     ) -> AsyncIterator[bytes]:
         """将 Chat Completions SSE 流转换为 Responses SSE 流
 
-        Args:
-            chat_stream: aiohttp StreamReader（上游响应内容）
-            req: 原始 Responses API 请求
+        事件序列:
+        1. response.created
+        2. response.in_progress
+        3. response.output_item.added (每个 Item 创建时)
+        4. response.output_text.delta / response.function_call_arguments.delta
+        5. response.output_item.done (每个 Item 完成时)
+        6. response.completed
 
-        Yields:
-            Responses API SSE 事件字节
+        SSE 格式: data: {json}\n\n (无 event 行)
         """
-        response_id = self.sessions.generate_response_id()
-        msg_id = f"msg_{response_id}"
+        response_id = self._generate_id("resp")
+        msg_id = self._generate_id("msg")
 
-        # 工具调用状态跟踪
-        tool_calls_state = {}  # {index: {id, name, arguments}}
-        tool_call_counter = 0
+        # 状态跟踪
+        tool_calls_state = {}  # {index: {id, name, arguments, output_index}}
+        text_output_index = None  # 文本消息的 output_index
         full_content = ""
-        has_tool_calls = False
-        output_items = []  # 跟踪所有输出项
+
+        # 响应对象
+        response_obj = {
+            "id": response_id,
+            "object": "response",
+            "created_at": int(time.time()),
+            "model": req.model,
+            "status": "in_progress",
+            "output": [],
+            "previous_response_id": req.previous_response_id
+        }
 
         # 1. 发送 response.created 事件
-        yield self._format_sse("response.created", {
-            "type": "response.created",
-            "response": {
-                "id": response_id,
-                "model": req.model,
-                "previous_response_id": req.previous_response_id,
-                "status": "in_progress"
-            }
-        })
+        yield self._sse_event("response.created", {"response": response_obj})
 
-        # 2. 处理流式行
+        # 2. 发送 response.in_progress 事件
+        yield self._sse_event("response.in_progress", {"response": response_obj})
+
+        # 3. 处理上游流
         async for line in self._read_sse_lines(chat_stream):
             if not line.startswith("data: "):
                 continue
+
             data_str = line[6:]
             if data_str == "[DONE]":
                 continue
@@ -303,109 +346,200 @@ class ResponsesConverter:
             except json.JSONDecodeError:
                 continue
 
-            events = self._convert_chat_delta(data)
-            for event in events:
-                if event.get("is_tool_call"):
-                    # 处理工具调用
-                    tool_index = event.get("tool_index", 0)
-                    tool_id = event.get("tool_id", "")
-                    tool_name = event.get("tool_name", "")
-                    delta_args = event.get("delta", "")
+            # 更新模型名称
+            if "model" in data and response_obj["model"] == req.model:
+                response_obj["model"] = data["model"]
 
-                    # 首次出现该工具调用
-                    if tool_index not in tool_calls_state:
-                        tool_calls_state[tool_index] = {
-                            "id": tool_id or f"call_{tool_index}",
-                            "name": tool_name,
-                            "arguments": "",
-                            "output_index": tool_call_counter
-                        }
-                        tool_call_counter += 1
-                        has_tool_calls = True
+            # 处理 choices
+            for choice in data.get("choices", []):
+                delta = choice.get("delta", {})
+                finish_reason = choice.get("finish_reason")
 
-                        # 发送 output_item.added 事件
-                        yield self._format_sse("response.output_item.added", {
-                            "type": "response.output_item.added",
-                            "output_index": tool_calls_state[tool_index]["output_index"],
+                # ---------- 处理工具调用 ----------
+                for tool_delta in delta.get("tool_calls") or []:
+                    async for event in self._process_tool_delta(
+                        tool_delta, response_id, response_obj, tool_calls_state
+                    ):
+                        yield event
+
+                # ---------- 处理文本内容 ----------
+                content = delta.get("content")
+                if content:
+                    full_content += content
+
+                    # 首次发送文本，先创建 message Item
+                    if text_output_index is None:
+                        text_output_index = len(response_obj["output"])
+                        response_obj["output"].append({
+                            "id": msg_id,
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": ""}],
+                            "status": "in_progress"
+                        })
+
+                        # 发送 output_item.added
+                        yield self._sse_event("response.output_item.added", {
+                            "response_id": response_id,
+                            "output_index": text_output_index,
                             "item": {
-                                "type": "function_call",
-                                "id": tool_calls_state[tool_index]["id"],
-                                "name": tool_name,
+                                "type": "message",
+                                "id": msg_id,
+                                "role": "assistant",
                                 "status": "in_progress"
                             }
                         })
-                        output_items.append(("function_call", tool_index))
 
-                    # 累积参数
-                    if delta_args:
-                        tool_calls_state[tool_index]["arguments"] += delta_args
+                    # 发送文本增量
+                    yield self._sse_event("response.output_text.delta", {
+                        "response_id": response_id,
+                        "item_id": msg_id,
+                        "output_index": text_output_index,
+                        "content_index": 0,
+                        "delta": content
+                    })
 
-                        # 发送参数增量事件
-                        yield self._format_sse("response.function_call_arguments.delta", {
-                            "type": "response.function_call_arguments.delta",
-                            "item_id": tool_calls_state[tool_index]["id"],
-                            "output_index": tool_calls_state[tool_index]["output_index"],
-                            "delta": delta_args
-                        })
+                # ---------- 处理完成信号 ----------
+                if finish_reason:
+                    async for event in self._finish_response(
+                        finish_reason, response_id, response_obj,
+                        tool_calls_state, msg_id, text_output_index, full_content
+                    ):
+                        yield event
 
-                    # 更新工具名称（可能在后续 chunk 中出现）
-                    if tool_name and not tool_calls_state[tool_index]["name"]:
-                        tool_calls_state[tool_index]["name"] = tool_name
+                    # 保存会话
+                    self._save_conversation(response_id, req, {
+                        "content": full_content or None,
+                        "tool_calls": [
+                            {"id": tc["id"], "type": "function", "function": {
+                                "name": tc["name"], "arguments": tc["arguments"]
+                            }}
+                            for tc in tool_calls_state.values()
+                        ]
+                    } if tool_calls_state else {"content": full_content})
+                    return
 
-                elif event.get("is_text"):
-                    # 处理文本内容
-                    delta_content = event.get("delta", "")
-                    if delta_content:
-                        full_content += delta_content
+        # 流正常结束但无 finish_reason，发送完成
+        async for event in self._finalize_stream(
+            response_id, response_obj, msg_id, text_output_index, full_content
+        ):
+            yield event
 
-                        # 如果还没有发送文本 output_item.added
-                        if ("message", 0) not in output_items:
-                            yield self._format_sse("response.output_item.added", {
-                                "type": "response.output_item.added",
-                                "output_index": tool_call_counter,
-                                "item": {
-                                    "type": "message",
-                                    "id": msg_id,
-                                    "role": "assistant",
-                                    "status": "in_progress"
-                                }
-                            })
-                            output_items.append(("message", 0))
+    async def _process_tool_delta(
+        self,
+        tool_delta: dict,
+        response_id: str,
+        response_obj: dict,
+        tool_calls_state: dict
+    ) -> AsyncIterator[bytes]:
+        """处理工具调用增量数据"""
+        index = tool_delta.get("index", 0)
+        tool_id = tool_delta.get("id", "")
+        func = tool_delta.get("function", {})
+        func_name = func.get("name", "")
+        func_args = func.get("arguments", "")
 
-                        # 发送文本增量事件
-                        yield self._format_sse("response.output_text.delta", {
-                            "type": "response.output_text.delta",
-                            "item_id": msg_id,
-                            "output_index": tool_call_counter,
-                            "content_index": 0,
-                            "delta": delta_content
-                        })
+        # 首次出现该工具调用
+        if index not in tool_calls_state:
+            output_index = len(response_obj["output"])
+            call_id = tool_id or self._generate_id("call")
 
-        # 3. 发送工具调用完成事件
-        for tool_index, tc in tool_calls_state.items():
-            yield self._format_sse("response.function_call_arguments.done", {
-                "type": "response.function_call_arguments.done",
-                "id": tc["id"],
-                "output_index": tc["output_index"],
-                "arguments": tc["arguments"]
+            tool_calls_state[index] = {
+                "id": call_id,
+                "name": func_name,
+                "arguments": "",
+                "output_index": output_index
+            }
+
+            # 添加到输出
+            response_obj["output"].append({
+                "id": call_id,
+                "type": "function_call",
+                "call_id": call_id,
+                "name": func_name,
+                "arguments": "",
+                "status": "in_progress"
             })
-            yield self._format_sse("response.output_item.done", {
-                "type": "response.output_item.done",
-                "output_index": tc["output_index"],
+
+            # 发送 output_item.added
+            yield self._sse_event("response.output_item.added", {
+                "response_id": response_id,
+                "output_index": output_index,
                 "item": {
                     "type": "function_call",
-                    "id": tc["id"],
-                    "name": tc["name"],
-                    "arguments": tc["arguments"],
-                    "status": "completed"
+                    "id": call_id,
+                    "call_id": call_id,
+                    "name": func_name,
+                    "status": "in_progress"
                 }
             })
 
-        # 4. 发送文本完成事件（如果有文本内容）
-        if full_content:
-            yield self._format_sse("response.output_item.done", {
-                "type": "response.output_item.done",
-                "output_index": tool_call_counter,
+        # 累积参数
+        if func_args:
+            tool_calls_state[index]["arguments"] += func_args
+
+            # 发送参数增量
+            yield self._sse_event("response.function_call_arguments.delta", {
+                "response_id": response_id,
+                "item_id": tool_calls_state[index]["id"],
+                "output_index": tool_calls_state[index]["output_index"],
+                "delta": func_args
+            })
+
+    async def _finish_response(
+        self,
+        finish_reason: str,
+        response_id: str,
+        response_obj: dict,
+        tool_calls_state: dict,
+        msg_id: str,
+        text_output_index: int,
+        full_content: str
+    ) -> AsyncIterator[bytes]:
+        """处理响应完成"""
+        # 完成工具调用
+        if finish_reason == "tool_calls":
+            for index, tc in tool_calls_state.items():
+                # 发送 arguments.done
+                yield self._sse_event("response.function_call_arguments.done", {
+                    "response_id": response_id,
+                    "item_id": tc["id"],
+                    "output_index": tc["output_index"],
+                    "arguments": tc["arguments"]
+                })
+
+                # 更新输出状态
+                for item in response_obj["output"]:
+                    if item.get("id") == tc["id"]:
+                        item["arguments"] = tc["arguments"]
+                        item["status"] = "completed"
+                        break
+
+                # 发送 output_item.done
+                yield self._sse_event("response.output_item.done", {
+                    "response_id": response_id,
+                    "output_index": tc["output_index"],
+                    "item": {
+                        "type": "function_call",
+                        "id": tc["id"],
+                        "call_id": tc["id"],
+                        "name": tc["name"],
+                        "arguments": tc["arguments"],
+                        "status": "completed"
+                    }
+                })
+
+        # 完成文本消息
+        if text_output_index is not None and full_content:
+            for item in response_obj["output"]:
+                if item.get("id") == msg_id:
+                    item["content"] = [{"type": "output_text", "text": full_content}]
+                    item["status"] = "completed"
+                    break
+
+            yield self._sse_event("response.output_item.done", {
+                "response_id": response_id,
+                "output_index": text_output_index,
                 "item": {
                     "type": "message",
                     "id": msg_id,
@@ -415,138 +549,94 @@ class ResponsesConverter:
                 }
             })
 
-        # 5. 构建输出列表
-        outputs = []
-        for tool_index, tc in sorted(tool_calls_state.items(), key=lambda x: x[1]["output_index"]):
-            outputs.append({
-                "type": "function_call",
-                "id": tc["id"],
-                "call_id": tc["id"],
-                "name": tc["name"],
-                "arguments": tc["arguments"],
-                "status": "completed"
-            })
+        # 发送 response.completed
+        response_obj["status"] = "completed"
+        yield self._sse_event("response.completed", {"response": response_obj})
+
+    async def _finalize_stream(
+        self,
+        response_id: str,
+        response_obj: dict,
+        msg_id: str,
+        text_output_index: int,
+        full_content: str
+    ) -> AsyncIterator[bytes]:
+        """流结束但无 finish_reason 时的收尾处理"""
         if full_content:
-            outputs.append({
-                "type": "message",
-                "id": msg_id,
-                "role": "assistant",
-                "content": [{"type": "output_text", "text": full_content}],
-                "status": "completed"
-            })
+            if text_output_index is None:
+                text_output_index = 0
+                response_obj["output"] = [{
+                    "id": msg_id,
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": full_content}],
+                    "status": "completed"
+                }]
+            else:
+                for item in response_obj["output"]:
+                    if item.get("id") == msg_id:
+                        item["content"] = [{"type": "output_text", "text": full_content}]
+                        item["status"] = "completed"
+                        break
 
-        # 6. 发送 response.completed 事件
-        yield self._format_sse("response.completed", {
-            "type": "response.completed",
-            "response": {
-                "id": response_id,
-                "model": req.model,
-                "previous_response_id": req.previous_response_id,
-                "status": "completed",
-                "output": outputs
-            }
-        })
+        response_obj["status"] = "completed"
+        yield self._sse_event("response.completed", {"response": response_obj})
 
-        # 7. 保存会话
-        messages = self.sessions.get_messages(req.previous_response_id)
-        if req.instructions:
-            messages = [{"role": "system", "content": req.instructions}] + messages
-        messages.extend(self._parse_input(req.input))
+    # ============================================================
+    # 辅助方法
+    # ============================================================
 
-        # 构建助手消息
-        if tool_calls_state:
-            assistant_msg = {
-                "role": "assistant",
-                "content": full_content or None,
-                "tool_calls": [
-                    {
-                        "id": tc["id"],
-                        "type": "function",
-                        "function": {
-                            "name": tc["name"],
-                            "arguments": tc["arguments"]
-                        }
-                    }
-                    for tc in tool_calls_state.values()
-                ]
-            }
-        else:
-            assistant_msg = {"role": "assistant", "content": full_content}
+    def _generate_id(self, prefix: str) -> str:
+        """生成唯一 ID
 
-        messages.append(assistant_msg)
-        self.sessions.save_session(response_id, messages)
+        格式: {prefix}_{uuid_hex}
+        例如: resp_abc123, msg_def456, call_ghi789
+        """
+        return f"{prefix}_{uuid.uuid4().hex[:24]}"
 
-    def _parse_chat_chunk(self, chunk: bytes) -> list[dict]:
-        """解析 Chat Completions SSE 块"""
-        events = []
-        try:
-            lines = chunk.decode("utf-8").strip().split("\n")
-            for line in lines:
-                if line.startswith("data: "):
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        continue
-                    data = json.loads(data_str)
-                    events.extend(self._convert_chat_delta(data))
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            pass
-        return events
+    def _sse_event(self, event_type: str, data: dict) -> bytes:
+        """格式化 SSE 事件
+
+        格式: data: {json}\n\n
+        注意: 不包含 event 行，与 open-responses-server 一致
+        """
+        data["type"] = event_type
+        return f"data: {json.dumps(data, ensure_ascii=False)}\n\n".encode("utf-8")
 
     async def _read_sse_lines(self, content) -> AsyncIterator[str]:
-        """逐行读取 SSE 数据，处理跨 chunk 的行"""
+        """逐行读取 SSE 数据流"""
         buffer = ""
         async for chunk in content.iter_any():
             buffer += chunk.decode("utf-8", errors="ignore")
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
-                yield line
-        # 处理剩余内容
+                if line.strip():
+                    yield line
         if buffer.strip():
             yield buffer.strip()
 
-    def _convert_chat_delta(self, data: dict) -> list[dict]:
-        """转换 Chat Completions delta 到 Responses 事件"""
-        events = []
-        choices = data.get("choices", [])
+    def _save_conversation(
+        self,
+        response_id: str,
+        req: ResponsesRequest,
+        assistant_message: dict
+    ):
+        """保存会话历史，支持多轮对话
 
-        for choice in choices:
-            delta = choice.get("delta", {})
-            output_index = choice.get("index", 0)
+        使用 previous_response_id 可以获取历史消息
+        """
+        # 获取历史
+        messages = list(self.sessions.get_messages(req.previous_response_id))
 
-            # 处理文本内容
-            content = delta.get("content")
-            if content:
-                events.append({
-                    "event": "response.output_text.delta",
-                    "type": "response.output_text.delta",
-                    "delta": content,
-                    "output_index": output_index,
-                    "content_index": 0,
-                    "is_text": True
-                })
+        # 添加 system 指令
+        if req.instructions:
+            messages = [{"role": "system", "content": req.instructions}] + messages
 
-            # 处理 tool_calls
-            tool_calls = delta.get("tool_calls") or []
-            for tool_delta in tool_calls:
-                tool_index = tool_delta.get("index", 0)
-                tool_id = tool_delta.get("id", "")
-                func = tool_delta.get("function", {})
-                func_name = func.get("name", "")
-                func_args = func.get("arguments", "")
+        # 添加用户输入
+        messages.extend(self._parse_input(req.input))
 
-                events.append({
-                    "event": "response.function_call_arguments.delta",
-                    "type": "response.function_call_arguments.delta",
-                    "tool_index": tool_index,
-                    "tool_id": tool_id,
-                    "tool_name": func_name,
-                    "delta": func_args,
-                    "output_index": output_index,
-                    "is_tool_call": True
-                })
+        # 添加助手响应
+        messages.append(assistant_message)
 
-        return events
-
-    def _format_sse(self, event: str, data: dict) -> bytes:
-        """格式化为 SSE 事件（使用 data-only 格式，不包含 event 行）"""
-        return f"data: {json.dumps(data)}\n\n".encode("utf-8")
+        # 保存
+        self.sessions.save_session(response_id, messages)

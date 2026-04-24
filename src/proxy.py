@@ -469,6 +469,9 @@ class ProxyServer:
         )
         await response.prepare(ctx._request)
 
+        # 收集响应内容用于调试
+        response_chunks = []
+
         try:
             # 简化请求头，只保留必要的认证信息
             simple_headers = {
@@ -507,9 +510,12 @@ class ProxyServer:
                     upstream_resp.content,
                     responses_req
                 ):
+                    response_chunks.append(chunk)
                     await response.write(chunk)
 
             elapsed_ms = (time.time() - ctx.start_time) * 1000
+            # 记录详细的流式响应内容
+            resp_body = b"".join(response_chunks).decode('utf-8', errors='ignore')
             self.log_manager.log_request(
                 method=ctx.method,
                 path=ctx.path,
@@ -518,7 +524,7 @@ class ProxyServer:
                 elapsed_ms=elapsed_ms,
                 retries=ctx.attempt,
                 request_body=json.dumps(chat_body),
-                response_body="[streaming response]"
+                response_body=resp_body
             )
         except aiohttp.ClientError as e:
             elapsed_ms = (time.time() - ctx.start_time) * 1000
