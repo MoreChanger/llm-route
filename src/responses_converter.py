@@ -358,15 +358,38 @@ class ResponsesConverter:
 
         for choice in choices:
             delta = choice.get("delta", {})
-            content = delta.get("content", "")
+            output_index = choice.get("index", 0)
 
+            # 处理文本内容
+            content = delta.get("content")
             if content:
                 events.append({
                     "event": "response.output_text.delta",
                     "type": "response.output_text.delta",
                     "delta": content,
-                    "output_index": choice.get("index", 0),
-                    "content_index": 0
+                    "output_index": output_index,
+                    "content_index": 0,
+                    "is_text": True
+                })
+
+            # 处理 tool_calls
+            tool_calls = delta.get("tool_calls", [])
+            for tool_delta in tool_calls:
+                tool_index = tool_delta.get("index", 0)
+                tool_id = tool_delta.get("id", "")
+                func = tool_delta.get("function", {})
+                func_name = func.get("name", "")
+                func_args = func.get("arguments", "")
+
+                events.append({
+                    "event": "response.function_call_arguments.delta",
+                    "type": "response.function_call_arguments.delta",
+                    "tool_index": tool_index,
+                    "tool_id": tool_id,
+                    "tool_name": func_name,
+                    "delta": func_args,
+                    "output_index": output_index,
+                    "is_tool_call": True
                 })
 
         return events
