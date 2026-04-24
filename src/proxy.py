@@ -364,13 +364,13 @@ class ProxyServer:
 
         当满足以下条件时进行格式转换：
         1. 请求路径为 /v1/messages
-        2. 上游协议为 anthropic
+        2. 上游配置了 convert_anthropic: true
         3. 请求方法为 POST
         """
         return (
             ctx.path == "/v1/messages" and
             ctx.upstream is not None and
-            ctx.upstream.protocol == "anthropic" and
+            ctx.upstream.convert_anthropic and
             ctx.method == "POST"
         )
 

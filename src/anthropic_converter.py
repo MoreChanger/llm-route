@@ -5,7 +5,6 @@
 
 主要功能：
 - 将 content 数组格式转换为字符串格式
-- 保持其他字段不变
 """
 import json
 from typing import Union
