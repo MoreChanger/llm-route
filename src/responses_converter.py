@@ -263,6 +263,13 @@ class ResponsesConverter:
         response_id = self.sessions.generate_response_id()
         msg_id = f"msg_{response_id}"
 
+        # 工具调用状态跟踪
+        tool_calls_state = {}  # {index: {id, name, arguments}}
+        tool_call_counter = 0
+        full_content = ""
+        has_tool_calls = False
+        output_items = []  # 跟踪所有输出项
+
         # 1. 发送 response.created 事件
         yield self._format_sse("response.created", {
             "type": "response.created",
@@ -274,43 +281,141 @@ class ResponsesConverter:
             }
         })
 
-        # 2. 发送 output_item.added 事件
-        yield self._format_sse("response.output_item.added", {
-            "type": "response.output_item.added",
-            "output_index": 0,
-            "item": {
-                "type": "message",
-                "id": msg_id,
-                "role": "assistant",
-                "status": "in_progress"
-            }
-        })
-
-        # 3. 处理流式块
-        full_content = ""
+        # 2. 处理流式块
         async for chunk in chat_stream:
             events = self._parse_chat_chunk(chunk)
             for event in events:
-                if event.get("delta"):
-                    full_content += event["delta"]
-                # 添加 item_id
-                event["item_id"] = msg_id
-                yield self._format_sse(event.get("event", "response.output_text.delta"), event)
+                if event.get("is_tool_call"):
+                    # 处理工具调用
+                    tool_index = event.get("tool_index", 0)
+                    tool_id = event.get("tool_id", "")
+                    tool_name = event.get("tool_name", "")
+                    delta_args = event.get("delta", "")
 
-        # 4. 发送 output_item.done 事件
-        yield self._format_sse("response.output_item.done", {
-            "type": "response.output_item.done",
-            "output_index": 0,
-            "item": {
+                    # 首次出现该工具调用
+                    if tool_index not in tool_calls_state:
+                        tool_calls_state[tool_index] = {
+                            "id": tool_id or f"call_{tool_index}",
+                            "name": tool_name,
+                            "arguments": "",
+                            "output_index": tool_call_counter
+                        }
+                        tool_call_counter += 1
+                        has_tool_calls = True
+
+                        # 发送 output_item.added 事件
+                        yield self._format_sse("response.output_item.added", {
+                            "type": "response.output_item.added",
+                            "output_index": tool_calls_state[tool_index]["output_index"],
+                            "item": {
+                                "type": "function_call",
+                                "id": tool_calls_state[tool_index]["id"],
+                                "name": tool_name,
+                                "status": "in_progress"
+                            }
+                        })
+                        output_items.append(("function_call", tool_index))
+
+                    # 累积参数
+                    if delta_args:
+                        tool_calls_state[tool_index]["arguments"] += delta_args
+
+                        # 发送参数增量事件
+                        yield self._format_sse("response.function_call_arguments.delta", {
+                            "type": "response.function_call_arguments.delta",
+                            "item_id": tool_calls_state[tool_index]["id"],
+                            "output_index": tool_calls_state[tool_index]["output_index"],
+                            "delta": delta_args
+                        })
+
+                    # 更新工具名称（可能在后续 chunk 中出现）
+                    if tool_name and not tool_calls_state[tool_index]["name"]:
+                        tool_calls_state[tool_index]["name"] = tool_name
+
+                elif event.get("is_text"):
+                    # 处理文本内容
+                    delta_content = event.get("delta", "")
+                    if delta_content:
+                        full_content += delta_content
+
+                        # 如果还没有发送文本 output_item.added
+                        if ("message", 0) not in output_items:
+                            yield self._format_sse("response.output_item.added", {
+                                "type": "response.output_item.added",
+                                "output_index": tool_call_counter,
+                                "item": {
+                                    "type": "message",
+                                    "id": msg_id,
+                                    "role": "assistant",
+                                    "status": "in_progress"
+                                }
+                            })
+                            output_items.append(("message", 0))
+
+                        # 发送文本增量事件
+                        yield self._format_sse("response.output_text.delta", {
+                            "type": "response.output_text.delta",
+                            "item_id": msg_id,
+                            "output_index": tool_call_counter,
+                            "content_index": 0,
+                            "delta": delta_content
+                        })
+
+        # 3. 发送工具调用完成事件
+        for tool_index, tc in tool_calls_state.items():
+            yield self._format_sse("response.function_call_arguments.done", {
+                "type": "response.function_call_arguments.done",
+                "id": tc["id"],
+                "output_index": tc["output_index"],
+                "arguments": tc["arguments"]
+            })
+            yield self._format_sse("response.output_item.done", {
+                "type": "response.output_item.done",
+                "output_index": tc["output_index"],
+                "item": {
+                    "type": "function_call",
+                    "id": tc["id"],
+                    "name": tc["name"],
+                    "arguments": tc["arguments"],
+                    "status": "completed"
+                }
+            })
+
+        # 4. 发送文本完成事件（如果有文本内容）
+        if full_content:
+            yield self._format_sse("response.output_item.done", {
+                "type": "response.output_item.done",
+                "output_index": tool_call_counter,
+                "item": {
+                    "type": "message",
+                    "id": msg_id,
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": full_content}],
+                    "status": "completed"
+                }
+            })
+
+        # 5. 构建输出列表
+        outputs = []
+        for tool_index, tc in sorted(tool_calls_state.items(), key=lambda x: x[1]["output_index"]):
+            outputs.append({
+                "type": "function_call",
+                "id": tc["id"],
+                "call_id": tc["id"],
+                "name": tc["name"],
+                "arguments": tc["arguments"],
+                "status": "completed"
+            })
+        if full_content:
+            outputs.append({
                 "type": "message",
                 "id": msg_id,
                 "role": "assistant",
                 "content": [{"type": "output_text", "text": full_content}],
                 "status": "completed"
-            }
-        })
+            })
 
-        # 5. 发送 response.completed 事件
+        # 6. 发送 response.completed 事件
         yield self._format_sse("response.completed", {
             "type": "response.completed",
             "response": {
@@ -318,21 +423,37 @@ class ResponsesConverter:
                 "model": req.model,
                 "previous_response_id": req.previous_response_id,
                 "status": "completed",
-                "output": [{
-                    "type": "message",
-                    "id": msg_id,
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": full_content}]
-                }]
+                "output": outputs
             }
         })
 
-        # 6. 保存会话
+        # 7. 保存会话
         messages = self.sessions.get_messages(req.previous_response_id)
         if req.instructions:
             messages = [{"role": "system", "content": req.instructions}] + messages
         messages.extend(self._parse_input(req.input))
-        messages.append({"role": "assistant", "content": full_content})
+
+        # 构建助手消息
+        if tool_calls_state:
+            assistant_msg = {
+                "role": "assistant",
+                "content": full_content or None,
+                "tool_calls": [
+                    {
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {
+                            "name": tc["name"],
+                            "arguments": tc["arguments"]
+                        }
+                    }
+                    for tc in tool_calls_state.values()
+                ]
+            }
+        else:
+            assistant_msg = {"role": "assistant", "content": full_content}
+
+        messages.append(assistant_msg)
         self.sessions.save_session(response_id, messages)
 
     def _parse_chat_chunk(self, chunk: bytes) -> list[dict]:
