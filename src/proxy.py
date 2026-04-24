@@ -356,7 +356,16 @@ class ProxyServer:
 
     def _parse_responses_request(self, body: bytes) -> ResponsesRequest:
         """解析 Responses API 请求"""
-        req_body = json.loads(body)
+        # 尝试多种编码
+        try:
+            body_str = body.decode("utf-8")
+        except UnicodeDecodeError:
+            try:
+                body_str = body.decode("gbk")
+            except UnicodeDecodeError:
+                body_str = body.decode("utf-8", errors="ignore")
+
+        req_body = json.loads(body_str)
         return ResponsesRequest(
             model=req_body.get("model", ""),
             input=req_body.get("input", []),
