@@ -110,6 +110,29 @@ class ResponsesConverter:
                     "role": item.get("role", "user"),
                     "content": content
                 })
+            # 格式3: {"type": "function_call_output", "call_id": "xxx", "output": "结果"}
+            elif item.get("type") == "function_call_output":
+                call_id = item.get("call_id", "")
+                output = item.get("output", "")
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": output
+                })
+            # 格式4: {"type": "function_call", "id": "xxx", "name": "tool_name", "arguments": "{}"}
+            elif item.get("type") == "function_call":
+                messages.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": item.get("id", ""),
+                        "type": "function",
+                        "function": {
+                            "name": item.get("name", ""),
+                            "arguments": item.get("arguments", "{}")
+                        }
+                    }]
+                })
 
         return messages
 
