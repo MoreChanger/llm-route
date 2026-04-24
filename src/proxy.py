@@ -395,10 +395,17 @@ class ProxyServer:
     ) -> web.Response:
         """非流式：发送 Chat Completions，转换响应"""
         try:
+            # 简化请求头，只保留必要的认证信息
+            simple_headers = {
+                "Content-Type": "application/json",
+                "Authorization": headers.get("Authorization", ""),
+            }
+            if "x-api-key" in headers:
+                simple_headers["x-api-key"] = headers["x-api-key"]
             async with self.client_session.post(
                 url,
                 json=chat_body,
-                headers=headers
+                headers=simple_headers
             ) as resp:
                 resp_body = await resp.read()
                 if self._should_retry(resp.status, resp_body, ctx.attempt):
