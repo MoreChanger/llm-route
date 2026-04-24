@@ -495,7 +495,7 @@ class ProxyServer:
                     )
 
                 async for chunk in self.responses_converter.convert_stream(
-                    upstream_resp.content.iter_any(),
+                    upstream_resp.content,
                     responses_req
                 ):
                     await response.write(chunk)

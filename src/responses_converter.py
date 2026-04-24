@@ -248,13 +248,13 @@ class ResponsesConverter:
 
     async def convert_stream(
         self,
-        chat_stream: AsyncIterator[bytes],
+        chat_stream,  # aiohttp StreamReader
         req: ResponsesRequest
     ) -> AsyncIterator[bytes]:
         """将 Chat Completions SSE 流转换为 Responses SSE 流
 
         Args:
-            chat_stream: Chat Completions SSE 字节流
+            chat_stream: aiohttp StreamReader（上游响应内容）
             req: 原始 Responses API 请求
 
         Yields:
@@ -281,9 +281,20 @@ class ResponsesConverter:
             }
         })
 
-        # 2. 处理流式块
-        async for chunk in chat_stream:
-            events = self._parse_chat_chunk(chunk)
+        # 2. 处理流式行
+        async for line in self._read_sse_lines(chat_stream):
+            if not line.startswith("data: "):
+                continue
+            data_str = line[6:]
+            if data_str == "[DONE]":
+                continue
+
+            try:
+                data = json.loads(data_str)
+            except json.JSONDecodeError:
+                continue
+
+            events = self._convert_chat_delta(data)
             for event in events:
                 if event.get("is_tool_call"):
                     # 处理工具调用
@@ -471,6 +482,18 @@ class ResponsesConverter:
         except (json.JSONDecodeError, UnicodeDecodeError):
             pass
         return events
+
+    async def _read_sse_lines(self, content) -> AsyncIterator[str]:
+        """逐行读取 SSE 数据，处理跨 chunk 的行"""
+        buffer = ""
+        async for chunk in content.iter_any():
+            buffer += chunk.decode("utf-8", errors="ignore")
+            while "\n" in buffer:
+                line, buffer = buffer.split("\n", 1)
+                yield line
+        # 处理剩余内容
+        if buffer.strip():
+            yield buffer.strip()
 
     def _convert_chat_delta(self, data: dict) -> list[dict]:
         """转换 Chat Completions delta 到 Responses 事件"""
