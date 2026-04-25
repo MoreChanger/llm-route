@@ -207,6 +207,8 @@ class ProxyServer:
 
     async def handle_request(self, request: web.Request) -> web.Response:
         """处理所有请求"""
+        start_time = time.time()
+
         try:
             # 创建请求上下文
             body = await request.read()
@@ -219,13 +221,17 @@ class ProxyServer:
             )
             raise
 
+        # 记录请求开始（便于排查卡住的请求）
+        body_size_kb = len(body) // 1024
+        self.log(f"[START] {request.method} {request.path} (body: {body_size_kb}KB)")
+
         ctx = RequestContext(
             method=request.method,
             path=request.path,
             headers=dict(request.headers),
             body=body,
             query_string=request.query_string,
-            start_time=time.time(),
+            start_time=start_time,
             _request=request,
         )
 
@@ -398,19 +404,38 @@ class ProxyServer:
         )
         await response.prepare(ctx._request)
 
+        # 流式请求使用更长的超时（每次读取 chunk 的超时设为 60 秒）
+        streaming_timeout = aiohttp.ClientTimeout(total=600, connect=30, sock_read=60)
+
         try:
             async with self.client_session.request(
                 ctx.method,
                 url,
                 headers=headers,
                 data=ctx.body,
+                timeout=streaming_timeout,
             ) as upstream_resp:
                 # 使用滚动缓冲区收集响应内容用于日志
                 log_buffer = RollingBuffer(STREAMING_LOG_MAX_SIZE)
 
+                # 进度追踪
+                last_progress_time = time.time()
+                progress_interval = 60  # 每 60 秒记录一次进度
+
                 async for chunk in upstream_resp.content.iter_any():
                     log_buffer.append(chunk)
                     await response.write(chunk)
+
+                    # 定期记录进度
+                    current_time = time.time()
+                    if current_time - last_progress_time >= progress_interval:
+                        elapsed_sec = int(current_time - ctx.start_time)
+                        received_kb = log_buffer.size // 1024
+                        self.log(
+                            f"[STREAMING] {ctx.method} {ctx.path} -> {ctx.matched_route.upstream} "
+                            f"(elapsed: {elapsed_sec}s, received: {received_kb}KB)"
+                        )
+                        last_progress_time = current_time
 
                 # 记录流式请求完成
                 elapsed_ms = (time.time() - ctx.start_time) * 1000
@@ -432,6 +457,13 @@ class ProxyServer:
                     request_body=ctx.body.decode("utf-8", errors="ignore"),
                     response_body=resp_body,
                 )
+        except asyncio.TimeoutError as e:
+            # 流式请求超时
+            elapsed_ms = (time.time() - ctx.start_time) * 1000
+            self.log(
+                f"{ctx.method} {ctx.path} -> {ctx.matched_route.upstream} [STREAMING TIMEOUT] {elapsed_ms:.0f}ms - {str(e)}",
+                "ERROR",
+            )
         except aiohttp.ClientError as e:
             # 流式传输错误，记录日志
             elapsed_ms = (time.time() - ctx.start_time) * 1000
@@ -571,6 +603,9 @@ class ProxyServer:
         # 使用滚动缓冲区收集响应内容用于日志
         log_buffer = RollingBuffer(STREAMING_LOG_MAX_SIZE)
 
+        # 流式请求使用更长的超时
+        streaming_timeout = aiohttp.ClientTimeout(total=600, connect=30, sock_read=60)
+
         try:
             # 简化请求头，只保留必要的认证信息
             simple_headers = {
@@ -580,7 +615,7 @@ class ProxyServer:
             if "x-api-key" in headers:
                 simple_headers["x-api-key"] = headers["x-api-key"]
             async with self.client_session.post(
-                url, json=chat_body, headers=simple_headers
+                url, json=chat_body, headers=simple_headers, timeout=streaming_timeout
             ) as upstream_resp:
                 # 检查上游响应状态
                 if upstream_resp.status >= 400:
@@ -603,11 +638,26 @@ class ProxyServer:
                         content_type="application/json",
                     )
 
+                # 进度追踪
+                last_progress_time = time.time()
+                progress_interval = 60  # 每 60 秒记录一次进度
+
                 async for chunk in self.responses_converter.convert_stream(
                     upstream_resp.content, responses_req
                 ):
                     log_buffer.append(chunk)
                     await response.write(chunk)
+
+                    # 定期记录进度
+                    current_time = time.time()
+                    if current_time - last_progress_time >= progress_interval:
+                        elapsed_sec = int(current_time - ctx.start_time)
+                        received_kb = log_buffer.size // 1024
+                        self.log(
+                            f"[STREAMING] {ctx.method} {ctx.path} -> {ctx.matched_route.upstream} (converted) "
+                            f"(elapsed: {elapsed_sec}s, received: {received_kb}KB)"
+                        )
+                        last_progress_time = current_time
 
             elapsed_ms = (time.time() - ctx.start_time) * 1000
 
@@ -627,6 +677,13 @@ class ProxyServer:
                 retries=ctx.attempt,
                 request_body=json.dumps(chat_body),
                 response_body=resp_body,
+            )
+        except asyncio.TimeoutError as e:
+            # 流式请求超时
+            elapsed_ms = (time.time() - ctx.start_time) * 1000
+            self.log(
+                f"{ctx.method} {ctx.path} -> [STREAMING TIMEOUT] {elapsed_ms:.0f}ms - {str(e)}",
+                "ERROR",
             )
         except aiohttp.ClientError as e:
             elapsed_ms = (time.time() - ctx.start_time) * 1000
