@@ -395,6 +395,54 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
         }
         .preset-name { font-weight: 500; }
         .preset-current { color: #4caf50; font-size: 12px; }
+        .config-section {
+            margin-bottom: 20px;
+        }
+        .config-section:last-child {
+            margin-bottom: 0;
+        }
+        .config-section-title {
+            color: #4a9eff;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #333;
+        }
+        .config-item {
+            background: rgba(255,255,255,0.02);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+        .config-item:last-child {
+            margin-bottom: 0;
+        }
+        .config-item-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .config-item-name {
+            font-weight: 500;
+            color: #fff;
+        }
+        .config-item-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            background: #333;
+            color: #888;
+        }
+        .config-item-detail {
+            font-size: 13px;
+            color: #888;
+            margin-top: 4px;
+        }
+        .config-item-detail span {
+            color: #aaa;
+        }
     </style>
 </head>
 <body>
@@ -465,6 +513,16 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
                     </div>
                     <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
                     <div class="notice">⚠️ 配置修改后需要重启容器才能生效</div>
+                </div>
+            </div>
+
+            <!-- 当前配置 -->
+            <div class="card" style="grid-column: 1 / -1;">
+                <div class="card-header">
+                    <span class="card-title">当前配置</span>
+                </div>
+                <div class="card-content">
+                    <div id="configView">加载中...</div>
                 </div>
             </div>
 
@@ -709,9 +767,79 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
                 const data = await resp.json();
                 document.getElementById('configPort').value = data.port || 8087;
                 document.getElementById('configLogLevel').value = data.log_level || 2;
+                renderConfigView(data);
             } catch (e) {
                 console.error('加载配置失败:', e);
             }
+        }
+
+        function renderConfigView(config) {
+            const container = document.getElementById('configView');
+            let html = '';
+
+            // Upstreams
+            html += '<div class="config-section">';
+            html += '<div class="config-section-title">上游服务 (Upstreams)</div>';
+            if (config.upstreams && config.upstreams.length > 0) {
+                config.upstreams.forEach(u => {
+                    html += '<div class="config-item">';
+                    html += '<div class="config-item-header">';
+                    html += `<span class="config-item-name">${escapeHtml(u.name)}</span>`;
+                    html += `<span class="config-item-badge">${escapeHtml(u.protocol)}</span>`;
+                    if (u.convert_responses) {
+                        html += '<span class="config-item-badge" style="background:rgba(74,158,255,0.2);color:#4a9eff;">convert_responses</span>';
+                    }
+                    html += '</div>';
+                    html += `<div class="config-item-detail"><span>URL:</span> ${escapeHtml(u.url)}</div>`;
+                    html += '</div>';
+                });
+            } else {
+                html += '<div class="config-item-detail">暂无上游配置</div>';
+            }
+            html += '</div>';
+
+            // Routes
+            html += '<div class="config-section">';
+            html += '<div class="config-section-title">路由规则 (Routes)</div>';
+            if (config.routes && config.routes.length > 0) {
+                config.routes.forEach(r => {
+                    html += '<div class="config-item">';
+                    html += `<div class="config-item-header">`;
+                    html += `<span class="config-item-name">${escapeHtml(r.path)}</span>`;
+                    html += `<span class="config-item-badge" style="background:rgba(76,175,80,0.2);color:#4caf50;">→ ${escapeHtml(r.upstream)}</span>`;
+                    html += '</div>';
+                    html += '</div>';
+                });
+            } else {
+                html += '<div class="config-item-detail">暂无路由配置</div>';
+            }
+            html += '</div>';
+
+            // Retry Rules
+            html += '<div class="config-section">';
+            html += '<div class="config-section-title">重试规则 (Retry Rules)</div>';
+            if (config.retry_rules && config.retry_rules.length > 0) {
+                config.retry_rules.forEach((r, i) => {
+                    html += '<div class="config-item">';
+                    html += '<div class="config-item-header">';
+                    html += `<span class="config-item-name">状态码 ${r.status}</span>`;
+                    if (r.body_contains) {
+                        html += `<span class="config-item-badge">包含: ${escapeHtml(r.body_contains)}</span>`;
+                    }
+                    html += '</div>';
+                    html += `<div class="config-item-detail">`;
+                    html += `<span>最大重试:</span> ${r.max_retries}次 &nbsp;|&nbsp; `;
+                    html += `<span>延迟:</span> ${r.delay}s &nbsp;|&nbsp; `;
+                    html += `<span>抖动:</span> ±${r.jitter}s`;
+                    html += '</div>';
+                    html += '</div>';
+                });
+            } else {
+                html += '<div class="config-item-detail">暂无重试规则</div>';
+            }
+            html += '</div>';
+
+            container.innerHTML = html;
         }
 
         async function saveConfig() {
@@ -1073,11 +1201,44 @@ class WebAdminHandler:
     async def handle_config_get(self, request: web.Request) -> web.Response:
         """获取当前配置"""
         config = self.proxy_server.config
+
+        # 构建 upstreams 信息
+        upstreams = []
+        for name, upstream in config.upstreams.items():
+            upstreams.append({
+                "name": name,
+                "url": upstream.url,
+                "protocol": upstream.protocol,
+                "convert_responses": upstream.convert_responses,
+            })
+
+        # 构建 routes 信息
+        routes = []
+        for route in config.routes:
+            routes.append({
+                "path": route.path,
+                "upstream": route.upstream,
+            })
+
+        # 构建 retry_rules 信息
+        retry_rules = []
+        for rule in config.retry_rules:
+            retry_rules.append({
+                "status": rule.status,
+                "max_retries": rule.max_retries,
+                "delay": rule.delay,
+                "jitter": rule.jitter,
+                "body_contains": rule.body_contains,
+            })
+
         return web.json_response(
             {
                 "port": config.port,
                 "log_level": config.log_level,
                 "host": config.host,
+                "upstreams": upstreams,
+                "routes": routes,
+                "retry_rules": retry_rules,
             }
         )
 
