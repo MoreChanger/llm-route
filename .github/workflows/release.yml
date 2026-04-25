@@ -107,7 +107,12 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*.zip
-          generate_release_notes: true
+          body: |
+            ## 更新内容
+
+            - 修复 Windows 桌面端线程安全问题，提升稳定性
+            - 优化平台检测性能，减少资源占用
+            - 改进注册表操作错误处理，便于问题排查
+            - 限制流式响应日志内存占用（最大 64KB）
           draft: false
           prerelease: false
