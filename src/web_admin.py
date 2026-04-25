@@ -777,7 +777,11 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
                 });
                 const data = await resp.json();
                 if (resp.ok) {
-                    alert('密码修改成功！请使用新密码重新登录。');
+                    let msg = '密码修改成功！请使用新密码重新登录。';
+                    if (data.warning) {
+                        msg = data.warning + '\\n\\n' + msg;
+                    }
+                    alert(msg);
                     // 清除会话，跳转到登录页
                     document.cookie = 'admin_session=; max-age=0; path=/';
                     window.location.href = '/_admin/login';
@@ -1157,9 +1161,18 @@ class WebAdminHandler:
         self.auth_manager.set_password_hash(new_hash)
         self.auth_manager.set_plaintext_password(None)
 
-        # 保存到文件
+        # 保存到文件（如果失败，密码仍对本次运行有效）
+        save_failed = False
         try:
             save_config(config, self.config_path)
-            return web.json_response({"success": True})
-        except Exception as e:
-            return web.json_response({"error": str(e)}, status=500)
+        except PermissionError:
+            save_failed = True
+        except Exception:
+            save_failed = True
+
+        if save_failed:
+            return web.json_response({
+                "success": True,
+                "warning": "密码已修改，但无法保存到配置文件。重启容器后需要重新设置密码。"
+            })
+        return web.json_response({"success": True})
