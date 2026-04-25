@@ -33,18 +33,21 @@ ENV/
 
 # Testing
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
-
-# Claude Code
-.claude/
-
-# Build artifacts
-*.spec.bak
 
 # Runtime
 .llm-route.lock
 logs/
 
-# Compound Engineering local config
-.compound-engineering/*.local.yaml
+# AI Assistant configs (not part of the project)
+.claude/
+.compound-engineering/
+.context/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+
+# Wiki (managed separately on GitHub)
+wiki/
