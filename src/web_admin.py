@@ -516,16 +516,6 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- 当前配置 -->
-            <div class="card" style="grid-column: 1 / -1;">
-                <div class="card-header">
-                    <span class="card-title">当前配置</span>
-                </div>
-                <div class="card-content">
-                    <div id="configView">加载中...</div>
-                </div>
-            </div>
-
             <!-- 密码修改 -->
             <div class="card">
                 <div class="card-header">
@@ -548,6 +538,16 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
                         <input type="password" id="confirmPassword" placeholder="请再次输入新密码">
                     </div>
                     <button class="btn btn-primary" onclick="changePassword()">修改密码</button>
+                </div>
+            </div>
+
+            <!-- 当前配置 -->
+            <div class="card" style="grid-column: 1 / -1;">
+                <div class="card-header">
+                    <span class="card-title">当前配置</span>
+                </div>
+                <div class="card-content">
+                    <div id="configView">加载中...</div>
                 </div>
             </div>
 
