@@ -24,7 +24,7 @@ class TrayManager:
         on_preset_change: Callable[[str], None],
         on_log_level_change: Callable[[int], None],
         config_path: str,
-        get_service_status: Optional[Callable[[], bool]] = None,
+        get_service_status: Callable[[], bool],
     ):
         """
         Args:
@@ -36,7 +36,7 @@ class TrayManager:
             on_preset_change: 预设变更回调
             on_log_level_change: 日志等级变更回调
             config_path: 配置文件路径
-            get_service_status: 获取服务运行状态的回调函数（线程安全）
+            get_service_status: 获取服务运行状态的回调函数（必需，用于线程安全访问）
         """
         self.proxy_server = proxy_server
         self.log_manager = log_manager
@@ -57,12 +57,17 @@ class TrayManager:
     def _is_service_running(self) -> bool:
         """线程安全地获取服务运行状态
 
-        优先使用回调函数，否则回退到直接访问 proxy_server.runner
+        Returns:
+            bool: 服务是否正在运行
+
+        Raises:
+            RuntimeError: 如果未提供 get_service_status 回调
         """
-        if self._get_service_status is not None:
-            return self._get_service_status()
-        # 回退：直接访问（不推荐，但保持向后兼容）
-        return self.proxy_server.runner is not None
+        if self._get_service_status is None:
+            raise RuntimeError(
+                "get_service_status callback is required for thread-safe status access"
+            )
+        return self._get_service_status()
 
     def _create_icon(self, is_running: bool = True) -> Image.Image:
         """创建托盘图标
@@ -285,15 +290,33 @@ class TrayManager:
         thread.start()
 
     def _toggle_service(self):
-        """切换服务状态"""
-        # 使用回调函数，由主线程的事件循环处理
-        self.on_toggle_service()
+        """切换服务状态
 
-        # 延迟更新菜单，等待服务状态改变
-        def delayed_update():
-            self._update_menu()
+        使用事件驱动方式等待服务切换完成，替代固定延迟定时器。
+        如果回调返回 Future，等待操作完成后再更新菜单；
+        否则回退到固定延迟（兼容旧版调用）。
+        """
+        result = self.on_toggle_service()
 
-        threading.Timer(0.5, delayed_update).start()
+        # 检查是否返回了 Future
+        if result is not None and hasattr(result, "result"):
+            # Future 对象，等待操作完成（最多 10 秒）
+            def wait_and_update():
+                try:
+                    result.result(timeout=10.0)
+                except Exception:
+                    pass  # 超时或异常，仍需更新菜单
+                finally:
+                    self._update_menu()
+
+            thread = threading.Thread(target=wait_and_update, daemon=True)
+            thread.start()
+        else:
+            # 回退：固定延迟（兼容旧版）
+            def delayed_update():
+                self._update_menu()
+
+            threading.Timer(0.5, delayed_update).start()
 
     def _change_port(self):
         """更换端口（非阻塞模式）"""

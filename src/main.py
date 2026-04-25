@@ -154,7 +154,11 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
         asyncio.run_coroutine_threadsafe(change(), loop)
 
     def on_toggle_service():
-        """切换服务状态回调"""
+        """切换服务状态回调
+
+        Returns:
+            concurrent.futures.Future: 可用于等待操作完成
+        """
 
         async def toggle():
             if server.runner is not None:
@@ -162,7 +166,7 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
             else:
                 await server.start()
 
-        asyncio.run_coroutine_threadsafe(toggle(), loop)
+        return asyncio.run_coroutine_threadsafe(toggle(), loop)
 
     def on_preset_change(preset_name: str):
         """预设变更回调"""

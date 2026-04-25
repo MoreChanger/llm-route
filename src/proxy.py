@@ -3,6 +3,7 @@
 import asyncio
 import json
 import time
+from collections import deque
 from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
 import logging
@@ -27,6 +28,45 @@ logger = logging.getLogger(__name__)
 # 流式响应日志最大大小（字节）
 # 超过此大小的响应日志将被截断，只保留最后部分
 STREAMING_LOG_MAX_SIZE = 64 * 1024  # 64KB
+
+
+class RollingBuffer:
+    """滚动缓冲区，只保留最后 N 字节的数据
+
+    用于流式响应日志，避免内存无限增长。
+    """
+
+    def __init__(self, max_size: int):
+        self.max_size = max_size
+        self._chunks: deque = deque()
+        self._total_size = 0
+        self._truncated = False
+
+    def append(self, chunk: bytes) -> None:
+        """添加数据块，超过限制时丢弃最旧的数据"""
+        chunk_size = len(chunk)
+        self._chunks.append(chunk)
+        self._total_size += chunk_size
+
+        # 超过限制时，丢弃最旧的数据块
+        while self._total_size > self.max_size and len(self._chunks) > 1:
+            oldest = self._chunks.popleft()
+            self._total_size -= len(oldest)
+            self._truncated = True
+
+    @property
+    def truncated(self) -> bool:
+        """是否发生过截断"""
+        return self._truncated
+
+    def get_data(self) -> bytes:
+        """获取当前缓冲区中的所有数据"""
+        return b"".join(self._chunks)
+
+    @property
+    def size(self) -> int:
+        """当前缓冲区大小"""
+        return self._total_size
 
 
 @dataclass
@@ -360,33 +400,22 @@ class ProxyServer:
                 headers=headers,
                 data=ctx.body,
             ) as upstream_resp:
-                # 收集响应内容用于日志（限制大小）
-                resp_chunks = []
-                total_size = 0
-                truncated = False
+                # 使用滚动缓冲区收集响应内容用于日志
+                log_buffer = RollingBuffer(STREAMING_LOG_MAX_SIZE)
 
                 async for chunk in upstream_resp.content.iter_any():
-                    resp_chunks.append(chunk)
-                    total_size += len(chunk)
+                    log_buffer.append(chunk)
                     await response.write(chunk)
-
-                    # 检查是否超过日志大小限制
-                    if not truncated and total_size > STREAMING_LOG_MAX_SIZE:
-                        truncated = True
 
                 # 记录流式请求完成
                 elapsed_ms = (time.time() - ctx.start_time) * 1000
 
-                # 处理日志内容（截断或完整）
-                if truncated:
-                    # 保留最后 STREAMING_LOG_MAX_SIZE 字节
-                    all_data = b"".join(resp_chunks)
-                    resp_body = all_data[-STREAMING_LOG_MAX_SIZE:].decode(
-                        "utf-8", errors="ignore"
-                    )
+                # 处理日志内容
+                if log_buffer.truncated:
+                    resp_body = log_buffer.get_data().decode("utf-8", errors="ignore")
                     resp_body = f"[truncated, showing last 64KB]\n{resp_body}"
                 else:
-                    resp_body = b"".join(resp_chunks).decode("utf-8", errors="ignore")
+                    resp_body = log_buffer.get_data().decode("utf-8", errors="ignore")
 
                 self.log_manager.log_request(
                     method=ctx.method,
@@ -534,10 +563,8 @@ class ProxyServer:
         )
         await response.prepare(ctx._request)
 
-        # 收集响应内容用于调试（限制大小）
-        response_chunks = []
-        total_size = 0
-        truncated = False
+        # 使用滚动缓冲区收集响应内容用于日志
+        log_buffer = RollingBuffer(STREAMING_LOG_MAX_SIZE)
 
         try:
             # 简化请求头，只保留必要的认证信息
@@ -574,26 +601,17 @@ class ProxyServer:
                 async for chunk in self.responses_converter.convert_stream(
                     upstream_resp.content, responses_req
                 ):
-                    response_chunks.append(chunk)
-                    total_size += len(chunk)
+                    log_buffer.append(chunk)
                     await response.write(chunk)
-
-                    # 检查是否超过日志大小限制
-                    if not truncated and total_size > STREAMING_LOG_MAX_SIZE:
-                        truncated = True
 
             elapsed_ms = (time.time() - ctx.start_time) * 1000
 
-            # 处理日志内容（截断或完整）
-            if truncated:
-                # 保留最后 STREAMING_LOG_MAX_SIZE 字节
-                all_data = b"".join(response_chunks)
-                resp_body = all_data[-STREAMING_LOG_MAX_SIZE:].decode(
-                    "utf-8", errors="ignore"
-                )
+            # 处理日志内容
+            if log_buffer.truncated:
+                resp_body = log_buffer.get_data().decode("utf-8", errors="ignore")
                 resp_body = f"[truncated, showing last 64KB]\n{resp_body}"
             else:
-                resp_body = b"".join(response_chunks).decode("utf-8", errors="ignore")
+                resp_body = log_buffer.get_data().decode("utf-8", errors="ignore")
 
             self.log_manager.log_request(
                 method=ctx.method,
