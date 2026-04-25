@@ -8,10 +8,22 @@ from unittest.mock import patch, MagicMock
 from src.platform import (
     is_docker_environment,
     has_display_service,
+    has_clipboard,
     has_appindicator,
     get_platform_level,
     get_platform_info,
 )
+
+
+@pytest.fixture(autouse=True)
+def clear_caches():
+    """每个测试前清除所有缓存"""
+    is_docker_environment.cache_clear()
+    has_display_service.cache_clear()
+    has_clipboard.cache_clear()
+    has_appindicator.cache_clear()
+    get_platform_level.cache_clear()
+    yield
 
 
 class TestIsDockerEnvironment:
@@ -90,52 +102,25 @@ class TestHasClipboard:
 
     def test_clipboard_available(self):
         """测试剪贴板可用"""
-        # 使用 importlib 模拟导入
-        import importlib
-        import sys
-
-        # 创建一个 mock pyperclip 模块
         mock_pyperclip = MagicMock()
         mock_pyperclip.paste.return_value = "test"
 
-        with patch.dict(sys.modules, {"pyperclip": mock_pyperclip}):
-            # 重新导入模块以使用 mock
-            importlib.reload(sys.modules["src.platform"])
-            from src.platform import has_clipboard
-
+        with patch.dict("sys.modules", {"pyperclip": mock_pyperclip}):
             assert has_clipboard() is True
-
-        # 恢复原始模块
-        importlib.reload(sys.modules["src.platform"])
 
     def test_clipboard_not_available(self):
         """测试剪贴板不可用"""
-        import importlib
-        import sys
-
         mock_pyperclip = MagicMock()
         mock_pyperclip.paste.side_effect = Exception("Clipboard error")
 
-        with patch.dict(sys.modules, {"pyperclip": mock_pyperclip}):
-            importlib.reload(sys.modules["src.platform"])
-            from src.platform import has_clipboard
-
+        with patch.dict("sys.modules", {"pyperclip": mock_pyperclip}):
             assert has_clipboard() is False
-
-        importlib.reload(sys.modules["src.platform"])
 
     def test_pyperclip_not_installed(self):
         """测试 pyperclip 未安装"""
-        import importlib
-        import sys
-
-        with patch.dict(sys.modules, {"pyperclip": None}):
-            importlib.reload(sys.modules["src.platform"])
-            from src.platform import has_clipboard
-
-            assert has_clipboard() is False
-
-        importlib.reload(sys.modules["src.platform"])
+        with patch.dict("sys.modules", {"pyperclip": None}):
+            with patch("builtins.__import__", side_effect=ImportError("No module")):
+                assert has_clipboard() is False
 
 
 class TestHasAppIndicator:
@@ -151,27 +136,19 @@ class TestHasAppIndicator:
 
     def test_linux_with_appindicator3(self):
         """测试 Linux 有 AppIndicator3"""
-        import importlib
-        import sys
-
         mock_gi = MagicMock()
         mock_appindicator = MagicMock()
 
         with patch("sys.platform", "linux"):
             with patch.dict(
-                sys.modules,
+                "sys.modules",
                 {
                     "gi": mock_gi,
                     "gi.repository": MagicMock(),
                     "gi.repository.AppIndicator3": mock_appindicator,
                 },
             ):
-                importlib.reload(sys.modules["src.platform"])
-                from src.platform import has_appindicator
-
                 assert has_appindicator() is True
-
-        importlib.reload(sys.modules["src.platform"])
 
     def test_linux_without_appindicator(self):
         """测试 Linux 无 AppIndicator"""
