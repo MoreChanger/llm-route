@@ -119,15 +119,31 @@ def apply_preset(preset_path: Path, config_path: str) -> bool:
         if "log_level" in config_data:
             ordered_config["log_level"] = config_data["log_level"]
 
-        # 3. upstreams
+        # 4. admin_password（如果存在）
+        if "admin_password" in config_data:
+            ordered_config["admin_password"] = config_data["admin_password"]
+
+        # 5. admin_password_hash（如果存在）
+        if "admin_password_hash" in config_data:
+            ordered_config["admin_password_hash"] = config_data["admin_password_hash"]
+
+        # 6. log_retention_days（如果存在）
+        if "log_retention_days" in config_data:
+            ordered_config["log_retention_days"] = config_data["log_retention_days"]
+
+        # 7. log_structured（如果存在）
+        if "log_structured" in config_data:
+            ordered_config["log_structured"] = config_data["log_structured"]
+
+        # 8. upstreams
         if preset_data.get("upstreams"):
             ordered_config["upstreams"] = preset_data["upstreams"]
 
-        # 4. routes
+        # 9. routes
         if preset_data.get("routes"):
             ordered_config["routes"] = preset_data["routes"]
 
-        # 5. retry_rules
+        # 10. retry_rules
         if preset_data.get("retry_rules"):
             ordered_config["retry_rules"] = preset_data["retry_rules"]
 

@@ -2,7 +2,14 @@
 
 from pathlib import Path
 
-from src.config import Config, RetryRule, Upstream, Route, load_config
+from src.config import (
+    Config,
+    RetryRule,
+    Upstream,
+    Route,
+    load_config,
+    apply_preset,
+)
 
 
 class TestRetryRule:
@@ -157,3 +164,109 @@ upstreams:
         config = load_config(str(config_file))
         assert config.upstreams["ollama"].convert_responses is True
         assert config.upstreams["openai"].convert_responses is False
+
+
+class TestApplyPreset:
+    def test_apply_preset_preserves_password(self, tmp_path: Path):
+        """测试应用预设时保留密码字段"""
+        # 创建带密码的配置文件
+        config_content = """
+host: 0.0.0.0
+port: 9000
+log_level: 2
+admin_password: my_secret_password
+admin_password_hash: $2b$12$test_hash_here
+upstreams:
+  test:
+    url: https://api.test.com
+    protocol: anthropic
+routes:
+  - path: /v1/messages
+    upstream: test
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        # 创建预设文件
+        preset_content = """
+upstreams:
+  preset_upstream:
+    url: https://preset.example.com
+    protocol: openai
+routes:
+  - path: /v1/chat/completions
+    upstream: preset_upstream
+"""
+        preset_file = tmp_path / "preset.yaml"
+        preset_file.write_text(preset_content)
+
+        # 应用预设
+        result = apply_preset(preset_file, str(config_file))
+        assert result is True
+
+        # 重新加载配置，验证密码被保留
+        config = load_config(str(config_file))
+        assert config.admin_password == "my_secret_password"
+        assert config.admin_password_hash == "$2b$12$test_hash_here"
+        # 同时验证预设被应用
+        assert "preset_upstream" in config.upstreams
+        assert len(config.routes) == 1
+        assert config.routes[0].path == "/v1/chat/completions"
+
+    def test_apply_preset_preserves_only_hash(self, tmp_path: Path):
+        """测试应用预设时只保留 hash 密码"""
+        # 只有 hash 的配置
+        config_content = """
+admin_password_hash: $2b$12$hash_only
+upstreams:
+  old:
+    url: https://old.example.com
+    protocol: anthropic
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        preset_content = """
+upstreams:
+  new:
+    url: https://new.example.com
+routes: []
+"""
+        preset_file = tmp_path / "preset.yaml"
+        preset_file.write_text(preset_content)
+
+        result = apply_preset(preset_file, str(config_file))
+        assert result is True
+
+        config = load_config(str(config_file))
+        # hash 被保留，明文密码是默认值
+        assert config.admin_password_hash == "$2b$12$hash_only"
+        assert config.admin_password == "123456"  # 默认值
+
+    def test_apply_preset_no_password_in_config(self, tmp_path: Path):
+        """测试配置文件无密码时应用预设"""
+        config_content = """
+port: 8087
+upstreams:
+  old:
+    url: https://old.example.com
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        preset_content = """
+upstreams:
+  new:
+    url: https://new.example.com
+routes: []
+"""
+        preset_file = tmp_path / "preset.yaml"
+        preset_file.write_text(preset_content)
+
+        result = apply_preset(preset_file, str(config_file))
+        assert result is True
+
+        config = load_config(str(config_file))
+        # 无密码字段，使用默认值
+        assert config.admin_password == "123456"
+        assert config.admin_password_hash is None
