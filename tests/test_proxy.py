@@ -1,6 +1,7 @@
 """代理服务模块测试"""
+import json
+
 import pytest
-from unittest.mock import patch
 
 from src.proxy import ProxyServer, match_route, RequestContext
 from src.config import Config, Upstream, Route, RetryRule
@@ -154,8 +155,6 @@ class TestProxyServer:
 
 
 # 在 tests/test_proxy.py 末尾添加
-
-import json
 
 
 class TestProxyResponsesHandling:
