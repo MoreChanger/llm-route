@@ -1,14 +1,14 @@
 """系统托盘模块"""
 import sys
-import subprocess
-from pathlib import Path
-from typing import Callable, Optional
 import threading
+from typing import Callable, Optional
 
 import pystray
 from PIL import Image, ImageDraw
 
 from src.log_window import show_log_window
+from src.autostart import AutoStartManager
+from src.platform import get_platform_level
 
 
 class TrayManager:
@@ -45,8 +45,10 @@ class TrayManager:
         self.on_log_level_change = on_log_level_change
         self.config_path = config_path
         self.tray: Optional[pystray.Icon] = None
-        self._auto_start = self._check_auto_start()
+        self._autostart_manager = AutoStartManager()
+        self._auto_start = self._autostart_manager.is_enabled()
         self._current_preset = self._detect_current_preset()
+        self._platform_level = get_platform_level()
 
     def _create_icon(self, is_running: bool = True) -> Image.Image:
         """创建托盘图标
@@ -93,16 +95,24 @@ class TrayManager:
         # 构建日志等级子菜单
         log_level_items = self._create_log_level_menu_items()
 
-        return pystray.Menu(
+        menu_items = [
             pystray.MenuItem(
                 self._get_status_text,
                 lambda icon: None
             ),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                "复制代理地址",
-                self._copy_address
-            ),
+        ]
+
+        # Level 1 (完整功能): 所有功能可用
+        if self._platform_level == 1:
+            menu_items.extend([
+                pystray.MenuItem(
+                    "复制代理地址",
+                    self._copy_address
+                ),
+            ])
+
+        menu_items.extend([
             pystray.MenuItem(
                 "日志详情",
                 self._show_logs
@@ -124,16 +134,26 @@ class TrayManager:
                 "加载预设",
                 pystray.Menu(*preset_items) if preset_items else None
             ),
-            pystray.MenuItem(
-                self._get_autostart_text,
-                self._toggle_auto_start
-            ),
+        ])
+
+        # 开机自启选项仅在支持的平台显示
+        if self._autostart_manager.is_supported():
+            menu_items.extend([
+                pystray.MenuItem(
+                    self._get_autostart_text,
+                    self._toggle_auto_start
+                ),
+            ])
+
+        menu_items.extend([
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
                 "退出",
                 self._quit
             )
-        )
+        ])
+
+        return pystray.Menu(*menu_items)
 
     def _create_preset_menu_items(self) -> list:
         """创建预设菜单项"""
@@ -256,8 +276,11 @@ class TrayManager:
         address = f"http://127.0.0.1:{port}"
 
         # 使用 pyperclip 复制到剪贴板
-        import pyperclip
-        pyperclip.copy(address)
+        try:
+            import pyperclip
+            pyperclip.copy(address)
+        except Exception:
+            pass  # 剪贴板不可用时静默失败
 
     def _show_logs(self):
         """显示日志窗口"""
@@ -361,54 +384,13 @@ class TrayManager:
 
     def _toggle_auto_start(self):
         """切换开机自启"""
-        self._auto_start = not self._auto_start
-        self._set_auto_start(self._auto_start)
+        if self._autostart_manager.is_enabled():
+            self._autostart_manager.disable()
+            self._auto_start = False
+        else:
+            self._autostart_manager.enable()
+            self._auto_start = True
         self._update_menu()
-
-    def _check_auto_start(self) -> bool:
-        """检查是否已设置开机自启"""
-        if sys.platform == "win32":
-            import winreg
-            try:
-                key = winreg.OpenKey(
-                    winreg.HKEY_CURRENT_USER,
-                    r"Software\Microsoft\Windows\CurrentVersion\Run",
-                    0,
-                    winreg.KEY_READ
-                )
-                winreg.QueryValueEx(key, "LLM-ROUTE")
-                winreg.CloseKey(key)
-                return True
-            except WindowsError:
-                return False
-        return False
-
-    def _set_auto_start(self, enable: bool):
-        """设置开机自启"""
-        if sys.platform == "win32":
-            import winreg
-            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
-
-            try:
-                key = winreg.OpenKey(
-                    winreg.HKEY_CURRENT_USER,
-                    key_path,
-                    0,
-                    winreg.KEY_WRITE
-                )
-
-                if enable:
-                    exe_path = sys.executable
-                    winreg.SetValueEx(key, "LLM-ROUTE", 0, winreg.REG_SZ, f'"{exe_path}"')
-                else:
-                    try:
-                        winreg.DeleteValue(key, "LLM-ROUTE")
-                    except WindowsError:
-                        pass
-
-                winreg.CloseKey(key)
-            except WindowsError as e:
-                print(f"设置开机自启失败: {e}")
 
     def _update_menu(self):
         """更新菜单和图标"""
