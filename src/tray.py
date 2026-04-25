@@ -24,6 +24,7 @@ class TrayManager:
         on_preset_change: Callable[[str], None],
         on_log_level_change: Callable[[int], None],
         config_path: str,
+        get_service_status: Optional[Callable[[], bool]] = None,
     ):
         """
         Args:
@@ -35,6 +36,7 @@ class TrayManager:
             on_preset_change: 预设变更回调
             on_log_level_change: 日志等级变更回调
             config_path: 配置文件路径
+            get_service_status: 获取服务运行状态的回调函数（线程安全）
         """
         self.proxy_server = proxy_server
         self.log_manager = log_manager
@@ -45,10 +47,22 @@ class TrayManager:
         self.on_log_level_change = on_log_level_change
         self.config_path = config_path
         self.tray: Optional[pystray.Icon] = None
+        self._tray_lock = threading.Lock()  # 保护 self.tray 访问
         self._autostart_manager = AutoStartManager()
         self._auto_start = self._autostart_manager.is_enabled()
         self._current_preset = self._detect_current_preset()
         self._platform_level = get_platform_level()
+        self._get_service_status = get_service_status
+
+    def _is_service_running(self) -> bool:
+        """线程安全地获取服务运行状态
+
+        优先使用回调函数，否则回退到直接访问 proxy_server.runner
+        """
+        if self._get_service_status is not None:
+            return self._get_service_status()
+        # 回退：直接访问（不推荐，但保持向后兼容）
+        return self.proxy_server.runner is not None
 
     def _create_icon(self, is_running: bool = True) -> Image.Image:
         """创建托盘图标
@@ -83,10 +97,11 @@ class TrayManager:
 
     def _update_icon(self):
         """根据服务状态更新图标"""
-        if self.tray:
-            is_running = self.proxy_server.runner is not None
-            new_icon = self._create_icon(is_running)
-            self.tray.icon = new_icon
+        with self._tray_lock:
+            if self.tray:
+                is_running = self._is_service_running()
+                new_icon = self._create_icon(is_running)
+                self.tray.icon = new_icon
 
     def _create_menu(self) -> pystray.Menu:
         """创建托盘菜单"""
@@ -231,8 +246,8 @@ class TrayManager:
 
     def _get_status_text(self, icon) -> str:
         """获取状态文本"""
-        # 根据服务器实际状态判断
-        is_running = self.proxy_server.runner is not None
+        # 使用线程安全的回调获取服务状态
+        is_running = self._is_service_running()
         port = self.proxy_server.config.port
         if is_running:
             return f"[运行中] :{port}"
@@ -240,7 +255,7 @@ class TrayManager:
 
     def _get_service_text(self, icon) -> str:
         """获取服务状态文本"""
-        is_running = self.proxy_server.runner is not None
+        is_running = self._is_service_running()
         return "停止服务" if is_running else "启动服务"
 
     def _get_autostart_text(self, icon) -> str:
@@ -274,17 +289,13 @@ class TrayManager:
         # 使用回调函数，由主线程的事件循环处理
         self.on_toggle_service()
         # 延迟更新菜单，等待服务状态改变
-        if self.tray:
-            import threading
-
-            # 延迟 500ms 后更新，给服务足够时间启动/停止
-            threading.Timer(0.5, self._update_menu).start()
+        def delayed_update():
+            self._update_menu()
+        threading.Timer(0.5, delayed_update).start()
 
     def _change_port(self):
-        """更换端口"""
+        """更换端口（非阻塞模式）"""
         from src.port import is_port_available
-
-        result = {"port": None}
 
         def show_dialog():
             import tkinter as tk
@@ -308,6 +319,8 @@ class TrayManager:
             entry.pack(pady=5)
             entry.select_range(0, tk.END)
             entry.focus_set()
+
+            result = {"port": None}
 
             def on_ok(event=None):
                 try:
@@ -363,14 +376,14 @@ class TrayManager:
             # 运行主循环
             root.mainloop()
 
-        # 在新线程中运行对话框
-        thread = threading.Thread(target=show_dialog, daemon=False)
-        thread.start()
-        thread.join(timeout=30)  # 等待对话框关闭
+            # 对话框关闭后，通过回调更新端口
+            if result["port"] is not None:
+                self.on_port_change(result["port"])
+                self._update_menu()
 
-        if result["port"] is not None:
-            self.on_port_change(result["port"])
-            self._update_menu()
+        # 在后台线程中运行对话框（非阻塞）
+        thread = threading.Thread(target=show_dialog, daemon=True)
+        thread.start()
 
     def _toggle_auto_start(self):
         """切换开机自启"""
@@ -385,12 +398,13 @@ class TrayManager:
 
     def _update_menu(self):
         """更新菜单和图标"""
-        if self.tray:
-            # 更新图标颜色
-            self._update_icon()
-            # 完全替换菜单来强制刷新
-            self.tray.menu = self._create_menu()
-            self.tray.update_menu()
+        with self._tray_lock:
+            if self.tray:
+                # 更新图标颜色
+                self._update_icon()
+                # 完全替换菜单来强制刷新
+                self.tray.menu = self._create_menu()
+                self.tray.update_menu()
 
     def _quit(self):
         """退出程序"""
@@ -402,15 +416,18 @@ class TrayManager:
         """运行托盘"""
         # 托盘启动时服务应该已经在运行（由 main.py 先启动服务）
         # 默认创建绿色图标，后续通过 _update_menu 更新
-        is_running = self.proxy_server.runner is not None
+        is_running = self._is_service_running()
         icon = self._create_icon(is_running)
         menu = self._create_menu()
 
-        self.tray = pystray.Icon("llm-route", icon, "LLM-ROUTE", menu)
+        with self._tray_lock:
+            self.tray = pystray.Icon("llm-route", icon, "LLM-ROUTE", menu)
 
         self.tray.run()
 
     def stop(self):
         """停止托盘"""
-        if self.tray:
-            self.tray.stop()
+        with self._tray_lock:
+            if self.tray:
+                self.tray.stop()
+                self.tray = None

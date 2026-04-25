@@ -198,6 +198,7 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
         on_preset_change,
         on_log_level_change,
         config_path,
+        get_service_status=lambda: server.runner is not None,
     )
 
     import threading

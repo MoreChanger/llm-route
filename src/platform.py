@@ -3,11 +3,13 @@
 提供跨平台能力检测函数，用于判断当前运行环境和可用功能。
 """
 
+import functools
 import os
 import sys
 from pathlib import Path
 
 
+@functools.lru_cache(maxsize=1)
 def is_docker_environment() -> bool:
     """检测是否运行在 Docker 容器中
 
@@ -36,6 +38,7 @@ def is_docker_environment() -> bool:
     return False
 
 
+@functools.lru_cache(maxsize=1)
 def has_display_service() -> bool:
     """检测是否有显示服务可用
 
@@ -62,6 +65,7 @@ def has_display_service() -> bool:
     return bool(display or wayland)
 
 
+@functools.lru_cache(maxsize=1)
 def has_clipboard() -> bool:
     """检测剪贴板是否可用
 
@@ -80,6 +84,7 @@ def has_clipboard() -> bool:
         return False
 
 
+@functools.lru_cache(maxsize=1)
 def has_appindicator() -> bool:
     """检测 Linux 是否有 AppIndicator 支持
 
@@ -118,6 +123,7 @@ def has_appindicator() -> bool:
         return False
 
 
+@functools.lru_cache(maxsize=1)
 def get_platform_level() -> int:
     """获取当前平台的功能级别
 

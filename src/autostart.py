@@ -3,11 +3,16 @@
 支持 Windows、Linux、macOS 的开机自启功能。
 """
 
+import logging
 import os
 import sys
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
+
+
+# 模块级日志
+_logger = logging.getLogger(__name__)
 
 
 class UnsupportedPlatformError(Exception):
@@ -104,6 +109,16 @@ class _WindowsAutoStart(_AutoStartImpl):
 
     REG_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
+    def _log_error(self, message: str, error: Exception) -> None:
+        """记录错误到日志
+
+        Args:
+            message: 错误描述
+            error: 异常对象
+        """
+        error_code = getattr(error, 'winerror', None) or getattr(error, 'errno', 'unknown')
+        _logger.error(f"[AutoStart] {message}: {error} (code: {error_code})")
+
     def enable(self) -> bool:
         import winreg
 
@@ -117,7 +132,14 @@ class _WindowsAutoStart(_AutoStartImpl):
                 exe_path = self._get_executable_path()
                 winreg.SetValueEx(key, self.app_name, 0, winreg.REG_SZ, exe_path)
             return True
-        except WindowsError:
+        except PermissionError as e:
+            self._log_error("权限不足，无法写入注册表", e)
+            return False
+        except FileNotFoundError as e:
+            self._log_error("注册表路径不存在", e)
+            return False
+        except WindowsError as e:
+            self._log_error("注册表操作失败", e)
             return False
 
     def disable(self) -> bool:
@@ -135,7 +157,14 @@ class _WindowsAutoStart(_AutoStartImpl):
                 except WindowsError:
                     pass  # 键不存在，视为成功
             return True
-        except WindowsError:
+        except PermissionError as e:
+            self._log_error("权限不足，无法写入注册表", e)
+            return False
+        except FileNotFoundError as e:
+            self._log_error("注册表路径不存在", e)
+            return False
+        except WindowsError as e:
+            self._log_error("注册表操作失败", e)
             return False
 
     def is_enabled(self) -> bool:
