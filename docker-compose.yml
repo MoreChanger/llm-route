@@ -14,6 +14,8 @@ services:
       - "${LLM_ROUTE_PORT:-8087}:8087"
     volumes:
       # Persist configuration (writable for web admin config editing)
+      # Note: File permissions are inherited from host. If write fails, run:
+      #   chmod 666 config.yaml
       - ./config.yaml:/app/config.yaml
       # Persist logs
       - llm-route-logs:/app/logs
