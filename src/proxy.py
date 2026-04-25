@@ -29,6 +29,18 @@ logger = logging.getLogger(__name__)
 # 超过此大小的响应日志将被截断，只保留最后部分
 STREAMING_LOG_MAX_SIZE = 64 * 1024  # 64KB
 
+# Hop-by-hop 头不应转发（RFC 2616）
+HOP_BY_HOP_HEADERS = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+}
+
 
 class RollingBuffer:
     """滚动缓冲区，只保留最后 N 字节的数据
@@ -44,6 +56,8 @@ class RollingBuffer:
 
     def append(self, chunk: bytes) -> None:
         """添加数据块，超过限制时丢弃最旧的数据"""
+        if not chunk:
+            return  # 忽略空块
         chunk_size = len(chunk)
         self._chunks.append(chunk)
         self._total_size += chunk_size
@@ -292,33 +306,13 @@ class ProxyServer:
             return web.Response(status=502, text=f"Upstream error: {str(e)}")
 
     def _filter_headers(self, headers: dict) -> dict:
-        """过滤请求头，移除 hop-by-hop 头"""
-        hop_by_hop = {
-            "connection",
-            "keep-alive",
-            "proxy-authenticate",
-            "proxy-authorization",
-            "te",
-            "trailers",
-            "transfer-encoding",
-            "upgrade",
-            "host",
-        }
-        return {k: v for k, v in headers.items() if k.lower() not in hop_by_hop}
+        """过滤请求头，移除 hop-by-hop 头和 host"""
+        excluded = HOP_BY_HOP_HEADERS | {"host"}
+        return {k: v for k, v in headers.items() if k.lower() not in excluded}
 
     def _filter_response_headers(self, headers: dict) -> dict:
         """过滤响应头"""
-        hop_by_hop = {
-            "connection",
-            "keep-alive",
-            "proxy-authenticate",
-            "proxy-authorization",
-            "te",
-            "trailers",
-            "transfer-encoding",
-            "upgrade",
-        }
-        return {k: v for k, v in headers.items() if k.lower() not in hop_by_hop}
+        return {k: v for k, v in headers.items() if k.lower() not in HOP_BY_HOP_HEADERS}
 
     def _should_retry(self, status: int, body: bytes, attempt: int) -> bool:
         """检查是否需要重试"""

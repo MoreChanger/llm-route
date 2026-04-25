@@ -59,14 +59,7 @@ class TrayManager:
 
         Returns:
             bool: 服务是否正在运行
-
-        Raises:
-            RuntimeError: 如果未提供 get_service_status 回调
         """
-        if self._get_service_status is None:
-            raise RuntimeError(
-                "get_service_status callback is required for thread-safe status access"
-            )
         return self._get_service_status()
 
     def _create_icon(self, is_running: bool = True) -> Image.Image:
@@ -316,7 +309,9 @@ class TrayManager:
             def delayed_update():
                 self._update_menu()
 
-            threading.Timer(0.5, delayed_update).start()
+            timer = threading.Timer(0.5, delayed_update)
+            timer.daemon = True
+            timer.start()
 
     def _change_port(self):
         """更换端口（非阻塞模式）"""
