@@ -6,6 +6,7 @@ import signal
 import sys
 import time
 from pathlib import Path
+from typing import Optional
 
 from src.config import load_config, save_config
 from src.port import find_available_port, random_available_port, is_port_available

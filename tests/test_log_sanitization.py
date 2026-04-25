@@ -1,7 +1,6 @@
 # tests/test_log_sanitization.py
 """日志敏感信息过滤测试"""
 
-import pytest
 from src.log_file import sanitize_sensitive_content
 
 

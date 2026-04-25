@@ -1,7 +1,6 @@
 # tests/test_web_admin.py
 """Web 管理界面测试"""
 
-import pytest
 from unittest.mock import MagicMock, AsyncMock
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase

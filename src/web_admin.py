@@ -16,7 +16,7 @@ from typing import Optional, TYPE_CHECKING
 from aiohttp import web
 
 from src.auth import AdminAuthManager
-from src.config import list_presets, apply_preset, load_config, save_config
+from src.config import list_presets, apply_preset, save_config
 
 if TYPE_CHECKING:
     from src.proxy import ProxyServer

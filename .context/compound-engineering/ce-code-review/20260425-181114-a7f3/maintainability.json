@@ -1,0 +1,97 @@
+{
+  "reviewer": "maintainability",
+  "findings": [
+    {
+      "severity": "medium",
+      "category": "coupling",
+      "file": "src/web_admin.py",
+      "line_range": [31, 699],
+      "description": "Large HTML templates embedded as module-level constants (~670 lines). This creates tight coupling between presentation and logic, and makes the file harder to navigate and maintain.",
+      "evidence": "LOGIN_PAGE_HTML and DASHBOARD_PAGE_HTML constants contain inline CSS, JS, and HTML totaling ~670 lines.",
+      "recommendation": "Extract templates to separate files in a templates/ directory and load at runtime, or use a minimal templating approach. This improves maintainability and allows independent modification of UI."
+    },
+    {
+      "severity": "medium",
+      "category": "abstraction_debt",
+      "file": "src/web_admin.py",
+      "line_range": [758, 774],
+      "description": "require_auth decorator creates wrapper for each route handler, leading to repetitive pattern across all protected endpoints.",
+      "evidence": "Lines 743-756 show 8 separate route registrations each wrapping handlers with require_auth().",
+      "recommendation": "Consider using aiohttp's middleware system for authentication, or create a route group that applies auth uniformly. Reduces boilerplate and ensures consistent auth behavior."
+    },
+    {
+      "severity": "low",
+      "category": "naming",
+      "file": "src/auth.py",
+      "line_range": [42, 44],
+      "description": "Internal dict attributes use abbreviated names that reduce readability.",
+      "evidence": "_failed_attempts, _lockout_until, _sessions could have more descriptive names like _ip_failure_counts, _lockout_expiry_times, _active_sessions.",
+      "recommendation": "While not critical, consider more descriptive names for better code comprehension. Current names are acceptable but slightly terse."
+    },
+    {
+      "severity": "low",
+      "category": "complexity",
+      "file": "src/main.py",
+      "line_range": [269, 286],
+      "description": "Circular dependency resolved via late binding with proxy_server=None then setting later.",
+      "evidence": "WebAdminHandler created with proxy_server=None (line 277), then set afterward (line 286).",
+      "recommendation": "Acceptable pattern for breaking circular dependency, but consider restructuring to pass dependencies explicitly via a factory or dependency injection pattern if complexity grows."
+    },
+    {
+      "severity": "low",
+      "category": "premature_abstraction",
+      "file": "src/log_file.py",
+      "line_range": [12, 51],
+      "description": "sanitize_sensitive_content function handles both JSON and HTTP header formats with nested function definitions on each call.",
+      "evidence": "redact_json_header and redact_http_header are defined inside sanitize_sensitive_content, recreated on each invocation.",
+      "recommendation": "For performance-critical paths, precompile regex patterns at module level and move helper functions outside. Current approach is acceptable for typical log volumes but could be optimized if needed."
+    },
+    {
+      "severity": "info",
+      "category": "dead_code",
+      "file": "src/web_admin.py",
+      "line_range": [882, 887],
+      "description": "current_upstreams variable computed but not used for marking current preset.",
+      "evidence": "current_upstreams = set(self.proxy_server.config.upstreams.keys()) is calculated but preset_list items always have current=False.",
+      "recommendation": "Either implement current preset detection logic or remove the unused variable to avoid confusion."
+    },
+    {
+      "severity": "info",
+      "category": "coupling",
+      "file": "src/proxy.py",
+      "line_range": [67, 71],
+      "description": "ProxyServer now accepts optional web_admin_handler, creating bidirectional awareness between proxy and admin modules.",
+      "evidence": "ProxyServer.__init__ accepts web_admin_handler; WebAdminHandler holds reference to ProxyServer.",
+      "recommendation": "Current design is acceptable for this scope. If features expand, consider event-based communication or a service registry to reduce direct coupling."
+    }
+  ],
+  "residual_risks": [
+    {
+      "risk": "Memory growth from session storage",
+      "description": "AdminAuthManager stores all sessions in-memory dict. While cleanup runs on new session creation, long-running containers with many admin sessions could accumulate entries if sessions aren't properly invalidated.",
+      "mitigation": "Consider adding periodic cleanup via asyncio task or limiting max sessions."
+    },
+    {
+      "risk": "HTML template maintenance burden",
+      "description": "Large inline HTML templates will be difficult to modify independently and cannot be cached or optimized by frontend tooling.",
+      "mitigation": "Plan to extract templates in a follow-up refactor if UI complexity increases."
+    }
+  ],
+  "testing_gaps": [
+    {
+      "area": "Concurrent access",
+      "description": "No tests for concurrent session creation/validation or lockout behavior under load.",
+      "recommendation": "Add tests simulating concurrent login attempts from multiple IPs."
+    },
+    {
+      "area": "Session cleanup edge cases",
+      "description": "_cleanup_expired_sessions only called during create_session, not on validate_session.",
+      "recommendation": "Add test verifying sessions are properly cleaned when only validation occurs (no new logins)."
+    },
+    {
+      "area": "Log sanitization completeness",
+      "description": "Tests cover basic cases but may miss edge cases like nested JSON or multi-line values.",
+      "recommendation": "Add tests for edge cases: JSON with escaped quotes, nested objects with sensitive keys, multi-line header values."
+    }
+  ]
+}
