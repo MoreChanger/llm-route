@@ -11,7 +11,7 @@
 
 import json
 import time
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, Callable, TYPE_CHECKING
 
 from aiohttp import web
 
@@ -1220,7 +1220,7 @@ class WebAdminHandler:
         self.log_manager = log_manager
         self.config_path = config_path
         self._start_time: Optional[float] = None
-        self._on_config_change: Optional[callable] = None  # 配置变更回调
+        self._on_config_change: Optional[Callable[[], None]] = None  # 配置变更回调
 
     def set_on_config_change(self, callback: Optional[callable]) -> None:
         """设置配置变更回调（用于通知托盘刷新）"""
