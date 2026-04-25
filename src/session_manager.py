@@ -1,5 +1,6 @@
 # src/session_manager.py
 """会话管理模块"""
+
 from dataclasses import dataclass
 from typing import Optional
 import time
@@ -9,6 +10,7 @@ import uuid
 @dataclass
 class Session:
     """会话数据"""
+
     response_id: str
     messages: list  # Chat Completions 格式消息
     created_at: float
@@ -17,11 +19,7 @@ class Session:
 class SessionManager:
     """会话管理器"""
 
-    def __init__(
-        self,
-        max_sessions: int = 1000,
-        ttl_seconds: int = 3600
-    ):
+    def __init__(self, max_sessions: int = 1000, ttl_seconds: int = 3600):
         """
         Args:
             max_sessions: 最大会话数，超出时清理最旧
@@ -64,9 +62,7 @@ class SessionManager:
             self._cleanup_oldest()
 
         self._sessions[response_id] = Session(
-            response_id=response_id,
-            messages=messages,
-            created_at=time.time()
+            response_id=response_id, messages=messages, created_at=time.time()
         )
 
     def generate_response_id(self) -> str:
@@ -82,8 +78,7 @@ class SessionManager:
             return
 
         oldest_id = min(
-            self._sessions.keys(),
-            key=lambda k: self._sessions[k].created_at
+            self._sessions.keys(), key=lambda k: self._sessions[k].created_at
         )
         del self._sessions[oldest_id]
 
@@ -95,7 +90,8 @@ class SessionManager:
         """
         now = time.time()
         expired = [
-            k for k, v in self._sessions.items()
+            k
+            for k, v in self._sessions.items()
             if now - v.created_at > self._ttl_seconds
         ]
         for k in expired:

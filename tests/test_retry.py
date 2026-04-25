@@ -1,5 +1,5 @@
 """重试策略模块测试"""
-import pytest
+
 from unittest.mock import MagicMock
 
 from src.retry import should_retry, calculate_delay, RetryRule
@@ -55,10 +55,7 @@ class TestShouldRetry:
 
     def test_multiple_rules_first_match(self):
         """测试多个规则，第一个匹配"""
-        rules = [
-            RetryRule(status=429),
-            RetryRule(status=500)
-        ]
+        rules = [RetryRule(status=429), RetryRule(status=500)]
         response = MagicMock()
         response.status_code = 429
         response.text = ""
@@ -69,7 +66,7 @@ class TestShouldRetry:
         """测试多个规则，第二个匹配"""
         rules = [
             RetryRule(status=429, body_contains="rate limit"),
-            RetryRule(status=500)
+            RetryRule(status=500),
         ]
         response = MagicMock()
         response.status_code = 500

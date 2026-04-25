@@ -1,5 +1,5 @@
 """日志文件管理模块"""
-import os
+
 import sys
 import time
 from datetime import datetime
@@ -22,7 +22,7 @@ class LogManager:
         """获取日志目录路径"""
         # 打包后的 exe：使用 exe 所在目录
         # 注意：必须检查 sys.frozen 而不是 os.path
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             base_dir = Path(sys.executable).parent
         else:
             # 开发模式：使用项目根目录
@@ -108,7 +108,7 @@ class LogManager:
         elapsed_ms: float,
         retries: int = 0,
         request_body: str = "",
-        response_body: str = ""
+        response_body: str = "",
     ):
         """记录请求日志
 
@@ -128,11 +128,15 @@ class LogManager:
         elif self._log_level == 2:
             # 详细信息
             retry_str = f" (重试{retries}次)" if retries > 0 else ""
-            self.log(f"{method} {path} -> {upstream} [{status_code}] {elapsed_ms:.0f}ms{retry_str}")
+            self.log(
+                f"{method} {path} -> {upstream} [{status_code}] {elapsed_ms:.0f}ms{retry_str}"
+            )
         else:
             # 完整信息
             retry_str = f" (重试{retries}次)" if retries > 0 else ""
-            self.log(f"{method} {path} -> {upstream} [{status_code}] {elapsed_ms:.0f}ms{retry_str}")
+            self.log(
+                f"{method} {path} -> {upstream} [{status_code}] {elapsed_ms:.0f}ms{retry_str}"
+            )
             if request_body:
                 self.log(f"  请求: {request_body}")
             if response_body:
@@ -150,7 +154,9 @@ class LogManager:
                     return sum(1 for _ in f)
         return 0
 
-    def get_logs_page(self, page: int, page_size: int = 100) -> tuple[list[str], int, int]:
+    def get_logs_page(
+        self, page: int, page_size: int = 100
+    ) -> tuple[list[str], int, int]:
         """从文件获取分页日志
 
         Args:
@@ -179,7 +185,7 @@ class LogManager:
             end = start + page_size
 
             # 去除换行符
-            logs = [line.rstrip('\n\r') for line in all_lines[start:end]]
+            logs = [line.rstrip("\n\r") for line in all_lines[start:end]]
             return logs, total_pages, total
 
     def get_last_n_lines(self, n: int) -> list[str]:
@@ -201,7 +207,8 @@ class LogManager:
 
             # 使用 deque 高效读取最后 N 行
             from collections import deque
+
             with open(self._log_path, "r", encoding="utf-8") as f:
                 lines = deque(f, maxlen=n)
 
-            return [line.rstrip('\n\r') for line in lines]
+            return [line.rstrip("\n\r") for line in lines]

@@ -1,5 +1,6 @@
 # src/responses_models.py
 """Responses API 数据模型"""
+
 from dataclasses import dataclass, field
 from typing import Optional, Union
 
@@ -7,6 +8,7 @@ from typing import Optional, Union
 @dataclass
 class ResponseInput:
     """Responses API 输入项"""
+
     type: str  # "message"
     role: str  # "user" | "assistant"
     content: Union[str, list]
@@ -15,6 +17,7 @@ class ResponseInput:
 @dataclass
 class ResponsesRequest:
     """Responses API 请求"""
+
     model: str
     input: Union[list, str]
     instructions: Optional[str] = None
@@ -26,6 +29,7 @@ class ResponsesRequest:
 @dataclass
 class ResponseContent:
     """Responses API 内容项"""
+
     type: str  # "output_text" | "refusal" 等
     text: str
 
@@ -33,6 +37,7 @@ class ResponseContent:
 @dataclass
 class ResponsesOutput:
     """Responses API 输出"""
+
     type: str = "message"
     id: Optional[str] = None
     role: str = "assistant"
@@ -43,6 +48,7 @@ class ResponsesOutput:
 @dataclass
 class ResponsesResponse:
     """Responses API 响应"""
+
     id: str
     model: str
     output: ResponsesOutput
@@ -52,6 +58,7 @@ class ResponsesResponse:
 @dataclass
 class ToolCallArgumentsDelta:
     """工具调用参数流式增量事件"""
+
     type: str = "response.function_call_arguments.delta"
     item_id: str = ""
     output_index: int = 0
@@ -61,6 +68,7 @@ class ToolCallArgumentsDelta:
 @dataclass
 class ToolCallArgumentsDone:
     """工具调用参数完成事件"""
+
     type: str = "response.function_call_arguments.done"
     id: str = ""
     output_index: int = 0
@@ -70,6 +78,7 @@ class ToolCallArgumentsDone:
 @dataclass
 class FunctionCallOutput:
     """工具调用输出（客户端提交的执行结果）"""
+
     type: str = "function_call_output"
     call_id: str = ""
     output: str = ""
@@ -78,6 +87,7 @@ class FunctionCallOutput:
 @dataclass
 class FunctionCall:
     """工具调用"""
+
     type: str = "function_call"
     id: str = ""
     call_id: str = ""

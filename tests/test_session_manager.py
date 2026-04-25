@@ -1,6 +1,6 @@
 # tests/test_session_manager.py
 """会话管理模块测试"""
-import pytest
+
 import time
 from src.session_manager import Session, SessionManager
 
@@ -11,7 +11,7 @@ class TestSession:
         session = Session(
             response_id="resp_123",
             messages=[{"role": "user", "content": "Hi"}],
-            created_at=time.time()
+            created_at=time.time(),
         )
         assert session.response_id == "resp_123"
         assert len(session.messages) == 1

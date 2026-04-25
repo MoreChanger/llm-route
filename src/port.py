@@ -1,7 +1,7 @@
 """端口检测与分配模块"""
+
 import socket
 import random
-from typing import Optional
 
 
 def is_port_available(host: str, port: int) -> bool:
@@ -50,7 +50,9 @@ def find_available_port(host: str, start: int = 8087, max_attempts: int = 100) -
         if is_port_available(host, port):
             return port
 
-    raise RuntimeError(f"No available port found in range {start}-{start + max_attempts - 1}")
+    raise RuntimeError(
+        f"No available port found in range {start}-{start + max_attempts - 1}"
+    )
 
 
 def random_available_port(host: str) -> int:

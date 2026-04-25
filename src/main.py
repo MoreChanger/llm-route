@@ -1,6 +1,8 @@
 """LLM-ROUTE 入口模块"""
+
 import argparse
 import asyncio
+import signal
 import sys
 from pathlib import Path
 
@@ -10,6 +12,7 @@ from src.proxy import ProxyServer
 from src.tray import TrayManager
 from src.log_file import LogManager
 from src.single_instance import SingleInstanceLock
+from src.platform import is_docker_environment, get_platform_level
 
 
 def safe_print(message: str):
@@ -22,28 +25,24 @@ def safe_print(message: str):
 
 def parse_args():
     """解析命令行参数"""
-    parser = argparse.ArgumentParser(
-        description="LLM-ROUTE: 轻量级 LLM API 路由工具"
-    )
+    parser = argparse.ArgumentParser(description="LLM-ROUTE: 轻量级 LLM API 路由工具")
 
     parser.add_argument(
-        "--headless",
-        action="store_true",
-        help="无头模式运行（不显示托盘）"
+        "--headless", action="store_true", help="无头模式运行（不显示托盘）"
     )
 
     parser.add_argument(
         "--config",
         type=str,
         default=None,
-        help="配置文件路径（默认：当前目录下的 config.yaml）"
+        help="配置文件路径（默认：当前目录下的 config.yaml）",
     )
 
     parser.add_argument(
         "--port",
         type=str,
         default=None,
-        help="监听端口（覆盖配置文件，可指定数字或 'auto'）"
+        help="监听端口（覆盖配置文件，可指定数字或 'auto'）",
     )
 
     return parser.parse_args()
@@ -74,20 +73,20 @@ def get_config_path(args) -> str:
     return str(local_config)
 
 
-async def run_headless(server: ProxyServer, log_manager: LogManager):
+async def run_headless(
+    server: ProxyServer, log_manager: LogManager, shutdown_event: asyncio.Event
+):
     """无头模式运行
 
     仅启动服务，无托盘界面。
-    通过 Ctrl+C 停止服务。
+    通过 Ctrl+C 或 SIGTERM 停止服务。
     """
     try:
         await server.start()
         safe_print(f"服务运行中，监听 {server.config.host}:{server.config.port}")
         safe_print("按 Ctrl+C 停止服务...")
-        # 保持运行
-        while True:
-            await asyncio.sleep(1)
-    except KeyboardInterrupt:
+        # 等待关闭信号
+        await shutdown_event.wait()
         safe_print("\n正在停止服务...")
     finally:
         await server.stop()
@@ -111,9 +110,12 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
 
     def on_port_change(new_port):
         """端口变更回调"""
+
         async def change():
             # 先检测端口是否可用
-            if new_port != "auto" and not is_port_available(server.config.host, new_port):
+            if new_port != "auto" and not is_port_available(
+                server.config.host, new_port
+            ):
                 # 端口被占用，不进行切换，通过日志提示
                 server.log(f"端口 {new_port} 已被占用，请选择其他端口", "ERROR")
                 return
@@ -129,6 +131,7 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
 
     def on_toggle_service():
         """切换服务状态回调"""
+
         async def toggle():
             if server.runner is not None:
                 await server.stop()
@@ -139,6 +142,7 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
 
     def on_preset_change(preset_name: str):
         """预设变更回调"""
+
         async def reload():
             # 重新加载配置
             new_config = load_config(config_path)
@@ -161,9 +165,19 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
         server.log(f"日志等级已切换为: {log_manager.get_level_name()}")
 
     # 在单独线程中运行托盘
-    tray = TrayManager(server, log_manager, on_exit, on_port_change, on_toggle_service, on_preset_change, on_log_level_change, config_path)
+    tray = TrayManager(
+        server,
+        log_manager,
+        on_exit,
+        on_port_change,
+        on_toggle_service,
+        on_preset_change,
+        on_log_level_change,
+        config_path,
+    )
 
     import threading
+
     tray_thread = threading.Thread(target=tray.run, daemon=True)
     tray_thread.start()
 
@@ -179,14 +193,34 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
 
 def main():
     """主入口"""
-    # 单实例检查
-    lock = SingleInstanceLock("llm-route")
-    if not lock.acquire():
-        safe_print("LLM-ROUTE 已在运行中")
-        sys.exit(1)
+    # 初始化 lock 变量，防止 finally 块中的 UnboundLocalError
+    lock = None
+
+    # 检测 Docker 环境
+    in_docker = is_docker_environment()
+    if in_docker:
+        safe_print("检测到 Docker 环境")
+        # Docker 环境中跳过单实例锁检查（容器隔离天然保证单实例）
+    else:
+        # 单实例检查
+        lock = SingleInstanceLock("llm-route")
+        if not lock.acquire():
+            safe_print("LLM-ROUTE 已在运行中")
+            sys.exit(1)
 
     try:
         args = parse_args()
+
+        # 自动检测 headless 模式
+        # 1. 命令行指定
+        # 2. Docker 环境
+        # 3. 平台级别为 3（无显示服务）
+        platform_level = get_platform_level()
+        headless = args.headless or in_docker or platform_level == 3
+
+        if headless and not args.headless:
+            reason = "Docker 环境" if in_docker else "无显示服务"
+            safe_print(f"自动启用 headless 模式（原因：{reason}）")
 
         # 加载配置
         config_path = get_config_path(args)
@@ -218,26 +252,43 @@ def main():
         # 创建代理服务器
         server = ProxyServer(config, log_manager)
 
+        # 使用 Event 来协调优雅关闭
+        shutdown_event = None
+
+        # 设置信号处理（Docker 环境尤为重要）
+        def signal_handler(signum, frame):
+            nonlocal shutdown_event
+            safe_print(f"\n收到信号 {signum}，正在停止服务...")
+            # 使用 Event 通知主循环停止，而不是直接调用 asyncio
+            if shutdown_event is not None:
+                shutdown_event.set()
+
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
         # 运行
-        if args.headless:
-            asyncio.run(run_headless(server, log_manager))
+        if headless:
+            shutdown_event = asyncio.Event()
+            asyncio.run(run_headless(server, log_manager, shutdown_event))
         else:
             asyncio.run(run_with_tray(server, log_manager, config_path))
-    except Exception as e:
+    except Exception:
         import traceback
+
         # 写入错误到文件
         error_file = Path(__file__).parent.parent / "error.log"
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             error_file = Path(sys.executable).parent / "error.log"
         try:
             with open(error_file, "w", encoding="utf-8") as f:
                 f.write(traceback.format_exc())
-        except:
+        except Exception:
             pass
         raise
     finally:
-        # 释放单实例锁
-        lock.release()
+        # 释放单实例锁（如果存在）
+        if lock is not None:
+            lock.release()
 
 
 if __name__ == "__main__":

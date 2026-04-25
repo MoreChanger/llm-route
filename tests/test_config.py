@@ -1,8 +1,6 @@
 """配置模块测试"""
-import pytest
+
 from pathlib import Path
-import tempfile
-import yaml
 
 from src.config import Config, RetryRule, Upstream, Route, load_config
 
@@ -62,7 +60,7 @@ class TestConfig:
             port=9000,
             upstreams={"anthropic": Upstream(url="https://api.anthropic.com")},
             routes=[Route(path="/v1/messages", upstream="anthropic")],
-            retry_rules=[RetryRule(status=429, max_retries=10, delay=2, jitter=1)]
+            retry_rules=[RetryRule(status=429, max_retries=10, delay=2, jitter=1)],
         )
         assert config.host == "0.0.0.0"
         assert config.port == 9000
@@ -138,10 +136,7 @@ class TestUpstreamConvertResponses:
 
     def test_upstream_convert_responses_true(self):
         """测试启用转换"""
-        upstream = Upstream(
-            url="https://api.example.com",
-            convert_responses=True
-        )
+        upstream = Upstream(url="https://api.example.com", convert_responses=True)
         assert upstream.convert_responses is True
 
     def test_load_config_with_convert_responses(self, tmp_path: Path):
