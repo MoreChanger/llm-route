@@ -104,6 +104,15 @@ LOGIN_PAGE_HTML = """<!DOCTYPE html>
             margin-bottom: 20px;
             display: none;
         }
+        .warning-message {
+            background: rgba(255,165,0,0.1);
+            border: 1px solid #ffa500;
+            color: #ffc107;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
         button {
             width: 100%;
             padding: 14px;
@@ -141,6 +150,9 @@ LOGIN_PAGE_HTML = """<!DOCTYPE html>
     <div class="login-container">
         <h1>LLM-ROUTE</h1>
         <p class="subtitle">管理界面登录</p>
+        <div id="warningMessage" class="warning-message" style="display:none;">
+            ⚠️ 您正在使用默认密码，登录后请立即修改！
+        </div>
         <div id="errorMessage" class="error-message" role="alert" aria-live="polite"></div>
         <div id="lockoutMessage" class="lockout-message" role="alert" aria-live="polite"></div>
         <form id="loginForm">
@@ -154,6 +166,16 @@ LOGIN_PAGE_HTML = """<!DOCTYPE html>
         </form>
     </div>
     <script>
+        // 检查是否使用默认密码
+        fetch('/_admin/api/password-status')
+            .then(r => r.json())
+            .then(data => {
+                if (data.is_default) {
+                    document.getElementById('warningMessage').style.display = 'block';
+                }
+            })
+            .catch(() => {});
+
         const form = document.getElementById('loginForm');
         const passwordInput = document.getElementById('password');
         const submitBtn = document.getElementById('submitBtn');
@@ -438,6 +460,31 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
                 </div>
             </div>
 
+            <!-- 密码修改 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">密码修改</span>
+                </div>
+                <div class="card-content">
+                    <div id="passwordWarning" class="notice" style="display:none; background: rgba(255,68,68,0.1); border-color: #ff4444; color: #ff6b6b;">
+                        ⚠️ 您正在使用默认密码，请立即修改！
+                    </div>
+                    <div class="form-group">
+                        <label for="currentPassword">当前密码</label>
+                        <input type="password" id="currentPassword" placeholder="请输入当前密码">
+                    </div>
+                    <div class="form-group">
+                        <label for="newPassword">新密码</label>
+                        <input type="password" id="newPassword" placeholder="请输入新密码">
+                    </div>
+                    <div class="form-group">
+                        <label for="confirmPassword">确认新密码</label>
+                        <input type="password" id="confirmPassword" placeholder="请再次输入新密码">
+                    </div>
+                    <button class="btn btn-primary" onclick="changePassword()">修改密码</button>
+                </div>
+            </div>
+
             <!-- 日志查看 -->
             <div class="card" style="grid-column: 1 / -1;">
                 <div class="card-header">
@@ -685,12 +732,69 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
             hideLoading();
         }
 
+        // 密码管理
+        async function checkPasswordStatus() {
+            try {
+                const resp = await fetch('/_admin/api/password-status');
+                const data = await resp.json();
+                if (data.is_default) {
+                    document.getElementById('passwordWarning').style.display = 'block';
+                }
+            } catch (e) {
+                console.error('检查密码状态失败:', e);
+            }
+        }
+
+        async function changePassword() {
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+
+            if (!currentPassword || !newPassword || !confirmPassword) {
+                alert('请填写所有密码字段');
+                return;
+            }
+
+            if (newPassword !== confirmPassword) {
+                alert('两次输入的新密码不一致');
+                return;
+            }
+
+            if (newPassword.length < 6) {
+                alert('新密码长度至少为6位');
+                return;
+            }
+
+            showLoading();
+            try {
+                const resp = await api('/password', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        current_password: currentPassword,
+                        new_password: newPassword
+                    })
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    alert('密码修改成功！请使用新密码重新登录。');
+                    // 清除会话，跳转到登录页
+                    document.cookie = 'admin_session=; max-age=0; path=/';
+                    window.location.href = '/_admin/login';
+                } else {
+                    alert('修改失败: ' + data.error);
+                }
+            } catch (e) {}
+            hideLoading();
+        }
+
         // 初始化
         document.addEventListener('DOMContentLoaded', () => {
             refreshStatus();
             loadLogs();
             loadPresets();
             loadConfig();
+            checkPasswordStatus();
             setInterval(refreshStatus, 5000);
         });
     </script>
@@ -775,6 +879,14 @@ class WebAdminHandler:
         )
         app.router.add_post(
             "/_admin/api/service/stop", self.require_auth(self.handle_service_stop)
+        )
+
+        # 密码管理端点
+        app.router.add_get(
+            "/_admin/api/password-status", self.handle_password_status
+        )
+        app.router.add_post(
+            "/_admin/api/password", self.require_auth(self.handle_password_change)
         )
 
     def require_auth(self, handler):
@@ -1003,6 +1115,51 @@ class WebAdminHandler:
         try:
             await self.proxy_server.stop()
             self._start_time = None  # 重置启动时间
+            return web.json_response({"success": True})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    # ========== 密码管理 ==========
+
+    async def handle_password_status(self, request: web.Request) -> web.Response:
+        """返回密码状态（是否使用默认密码）"""
+        is_default = self.auth_manager.is_default_password()
+        return web.json_response({"is_default": is_default})
+
+    async def handle_password_change(self, request: web.Request) -> web.Response:
+        """修改密码"""
+        try:
+            data = await request.json()
+            current_password = data.get("current_password", "")
+            new_password = data.get("new_password", "")
+        except json.JSONDecodeError:
+            return web.json_response({"error": "Invalid request"}, status=400)
+
+        # 验证当前密码
+        if not self.auth_manager.verify_password(current_password):
+            return web.json_response({"error": "当前密码错误"}, status=400)
+
+        # 验证新密码
+        if len(new_password) < 6:
+            return web.json_response({"error": "新密码长度至少为6位"}, status=400)
+
+        # 生成新密码的哈希
+        from src.auth import generate_password_hash
+
+        new_hash = generate_password_hash(new_password)
+
+        # 更新配置
+        config = self.proxy_server.config
+        config.admin_password_hash = new_hash
+        config.admin_password = None  # 清除明文密码
+
+        # 更新认证管理器
+        self.auth_manager.set_password_hash(new_hash)
+        self.auth_manager.set_plaintext_password(None)
+
+        # 保存到文件
+        try:
+            save_config(config, self.config_path)
             return web.json_response({"success": True})
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)

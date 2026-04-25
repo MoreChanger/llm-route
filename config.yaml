@@ -1,8 +1,10 @@
 host: 0.0.0.0
 port: 8087
 log_level: 2
-# Web 管理界面密码（bcrypt 哈希）
-# Docker 首次启动时会自动生成随机密码并写入此字段
+# Web 管理界面密码
+# 默认密码为 123456，首次登录后建议修改
+admin_password: "123456"
+# 密码哈希（修改密码后自动生成，优先使用）
 admin_password_hash:
 upstreams:
   anthropic:

@@ -24,7 +24,8 @@ class AdminAuthManager:
     """管理员认证管理器
 
     功能：
-    - bcrypt 密码验证
+    - 明文密码验证（默认）
+    - bcrypt 密码验证（可选，优先使用）
     - 登录失败锁定（5 次 = 15 分钟）
     - 会话管理（24 小时 TTL）
     """
@@ -33,12 +34,18 @@ class AdminAuthManager:
     LOCKOUT_DURATION = 15 * 60  # 15 分钟
     SESSION_TTL = 24 * 60 * 60  # 24 小时
 
-    def __init__(self, password_hash: Optional[str] = None):
+    def __init__(
+        self,
+        password_hash: Optional[str] = None,
+        plaintext_password: Optional[str] = None,
+    ):
         """
         Args:
-            password_hash: bcrypt 哈希的密码，来自 config.yaml
+            password_hash: bcrypt 哈希的密码（优先使用）
+            plaintext_password: 明文密码（哈希不存在时使用）
         """
         self._password_hash = password_hash
+        self._plaintext_password = plaintext_password
         self._failed_attempts: dict[str, int] = {}  # ip -> count
         self._lockout_until: dict[str, float] = {}  # ip -> timestamp
         self._sessions: dict[str, AdminSession] = {}  # token -> session
@@ -48,9 +55,25 @@ class AdminAuthManager:
         """设置密码哈希"""
         self._password_hash = password_hash
 
+    def set_plaintext_password(self, password: Optional[str]) -> None:
+        """设置明文密码"""
+        self._plaintext_password = password
+
     def has_password(self) -> bool:
         """检查是否配置了密码"""
-        return self._password_hash is not None and len(self._password_hash) > 0
+        if self._password_hash is not None and len(self._password_hash) > 0:
+            return True
+        if self._plaintext_password is not None and len(self._plaintext_password) > 0:
+            return True
+        return False
+
+    def is_default_password(self) -> bool:
+        """检查是否使用默认密码"""
+        # 有哈希密码说明已修改过
+        if self._password_hash:
+            return False
+        # 检查明文密码是否为默认值
+        return self._plaintext_password == "123456"
 
     def verify_password(self, password: str) -> bool:
         """验证密码
@@ -61,15 +84,20 @@ class AdminAuthManager:
         Returns:
             密码是否正确
         """
-        if not self._password_hash:
-            return False
+        # 优先使用哈希密码
+        if self._password_hash:
+            try:
+                return bcrypt.checkpw(
+                    password.encode("utf-8"), self._password_hash.encode("utf-8")
+                )
+            except (ValueError, TypeError):
+                pass
 
-        try:
-            return bcrypt.checkpw(
-                password.encode("utf-8"), self._password_hash.encode("utf-8")
-            )
-        except (ValueError, TypeError):
-            return False
+        # 回退到明文密码比较
+        if self._plaintext_password:
+            return password == self._plaintext_password
+
+        return False
 
     def check_lockout(self, ip: str) -> bool:
         """检查 IP 是否被锁定

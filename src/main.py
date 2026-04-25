@@ -2,7 +2,6 @@
 
 import argparse
 import asyncio
-import secrets
 import signal
 import sys
 import time
@@ -278,33 +277,10 @@ def main():
         auth_manager = None
         web_admin_handler = None
         if in_docker or headless:
-            # 检查是否需要生成管理员密码
-            if config.admin_password_hash is None:
-                import bcrypt
-
-                # 生成随机密码
-                random_password = secrets.token_urlsafe(12)
-                password_hash = bcrypt.hashpw(
-                    random_password.encode(), bcrypt.gensalt()
-                ).decode()
-
-                # 更新配置
-                config.admin_password_hash = password_hash
-
-                # 打印密码（必须在保存之前，确保用户能看到）
-                safe_print("")
-                safe_print("=" * 50)
-                safe_print(f"ADMIN PASSWORD (SAVE THIS!): {random_password}")
-                safe_print("=" * 50)
-                safe_print("")
-
-                # 保存到配置文件
-                try:
-                    save_config(config, config_path)
-                except PermissionError:
-                    safe_print("警告: 无法保存密码到配置文件，密码将仅对本次运行有效")
-
-            auth_manager = AdminAuthManager(config.admin_password_hash)
+            auth_manager = AdminAuthManager(
+                password_hash=config.admin_password_hash,
+                plaintext_password=config.admin_password,
+            )
             web_admin_handler = WebAdminHandler(
                 proxy_server=None,  # 稍后设置
                 auth_manager=auth_manager,
