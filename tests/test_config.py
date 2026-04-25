@@ -270,3 +270,58 @@ routes: []
         # 无密码字段，使用默认值
         assert config.admin_password == "123456"
         assert config.admin_password_hash is None
+
+
+class TestActivePreset:
+    def test_load_config_with_active_preset(self, tmp_path: Path):
+        """测试加载包含 _active_preset 的配置"""
+        config_content = """
+_active_preset: jdcloud
+host: 0.0.0.0
+port: 8087
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        config = load_config(str(config_file))
+        assert config._active_preset == "jdcloud"
+
+    def test_load_config_without_active_preset(self, tmp_path: Path):
+        """测试加载不包含 _active_preset 的配置"""
+        config_content = """
+host: 0.0.0.0
+port: 8087
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        config = load_config(str(config_file))
+        assert config._active_preset is None
+
+    def test_save_config_with_active_preset(self, tmp_path: Path):
+        """测试保存时写入 _active_preset"""
+        from src.config import save_config
+
+        config = Config()
+        config._active_preset = "my-preset"
+        config_file = tmp_path / "config.yaml"
+
+        save_config(config, str(config_file))
+
+        # 重新加载验证
+        loaded = load_config(str(config_file))
+        assert loaded._active_preset == "my-preset"
+
+    def test_save_config_without_active_preset(self, tmp_path: Path):
+        """测试保存时不写入 _active_preset（当为 None）"""
+        from src.config import save_config
+
+        config = Config()
+        config._active_preset = None
+        config_file = tmp_path / "config.yaml"
+
+        save_config(config, str(config_file))
+
+        # 验证文件中不包含 _active_preset 字段
+        content = config_file.read_text()
+        assert "_active_preset" not in content
