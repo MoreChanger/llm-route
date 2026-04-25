@@ -10,6 +10,7 @@ import logging
 
 import aiohttp
 from aiohttp import web
+from aiohttp.web_exceptions import HTTPRequestEntityTooLarge
 
 from src.config import Config, Route, Upstream
 from src.retry import calculate_delay
@@ -152,8 +153,8 @@ class ProxyServer:
 
     async def start(self) -> None:
         """启动代理服务器"""
-        # 创建 aiohttp 应用
-        self.app = web.Application()
+        # 创建 aiohttp 应用（限制请求体大小为 100MB，防止内存耗尽攻击）
+        self.app = web.Application(client_max_size=100 * 1024 * 1024)
 
         # 添加健康检查端点（必须在 catch-all 路由之前）
         self.app.router.add_get("/health", self.handle_health)
@@ -206,8 +207,18 @@ class ProxyServer:
 
     async def handle_request(self, request: web.Request) -> web.Response:
         """处理所有请求"""
-        # 创建请求上下文
-        body = await request.read()
+        try:
+            # 创建请求上下文
+            body = await request.read()
+        except HTTPRequestEntityTooLarge as e:
+            # 请求体超过大小限制，记录日志并返回 413
+            self.log(
+                f"{request.method} {request.path} -> 413 Payload Too Large "
+                f"(actual: {e.actual_size // (1024 * 1024)}MB, limit: {e.max_size // (1024 * 1024)}MB)",
+                "ERROR",
+            )
+            raise
+
         ctx = RequestContext(
             method=request.method,
             path=request.path,
