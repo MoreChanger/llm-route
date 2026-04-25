@@ -47,7 +47,7 @@ class TrayManager:
         self.on_log_level_change = on_log_level_change
         self.config_path = config_path
         self.tray: Optional[pystray.Icon] = None
-        self._tray_lock = threading.Lock()  # 保护 self.tray 访问
+        self._tray_lock = threading.RLock()  # 可重入锁，允许同一线程多次获取
         self._autostart_manager = AutoStartManager()
         self._auto_start = self._autostart_manager.is_enabled()
         self._current_preset = self._detect_current_preset()
