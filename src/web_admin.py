@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 # ============================================================================
 
 # 登录页面 HTML
-LOGIN_PAGE_HTML = '''<!DOCTYPE html>
+LOGIN_PAGE_HTML = """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -216,10 +216,10 @@ LOGIN_PAGE_HTML = '''<!DOCTYPE html>
     </script>
 </body>
 </html>
-'''
+"""
 
 # 仪表盘页面 HTML
-DASHBOARD_PAGE_HTML = '''<!DOCTYPE html>
+DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -696,7 +696,7 @@ DASHBOARD_PAGE_HTML = '''<!DOCTYPE html>
     </script>
 </body>
 </html>
-'''
+"""
 
 
 class WebAdminHandler:
@@ -748,12 +748,18 @@ class WebAdminHandler:
         # API 端点（需要认证）
         app.router.add_get("/_admin/api/status", self.require_auth(self.handle_status))
         app.router.add_get("/_admin/api/logs", self.require_auth(self.handle_logs))
-        app.router.add_get("/_admin/api/presets", self.require_auth(self.handle_presets))
+        app.router.add_get(
+            "/_admin/api/presets", self.require_auth(self.handle_presets)
+        )
         app.router.add_post(
             "/_admin/api/presets/apply", self.require_auth(self.handle_preset_apply)
         )
-        app.router.add_get("/_admin/api/config", self.require_auth(self.handle_config_get))
-        app.router.add_post("/_admin/api/config", self.require_auth(self.handle_config_save))
+        app.router.add_get(
+            "/_admin/api/config", self.require_auth(self.handle_config_get)
+        )
+        app.router.add_post(
+            "/_admin/api/config", self.require_auth(self.handle_config_save)
+        )
         app.router.add_post(
             "/_admin/api/service/start", self.require_auth(self.handle_service_start)
         )
@@ -805,7 +811,9 @@ class WebAdminHandler:
         """处理登录请求"""
         # 检查是否配置了密码
         if not self.auth_manager.has_password():
-            return web.json_response({"error": "Admin password not configured"}, status=400)
+            return web.json_response(
+                {"error": "Admin password not configured"}, status=400
+            )
 
         # 获取客户端 IP
         client_ip = request.remote or "unknown"
@@ -814,7 +822,8 @@ class WebAdminHandler:
         if self.auth_manager.check_lockout(client_ip):
             remaining = self.auth_manager.get_lockout_remaining(client_ip)
             return web.json_response(
-                {"error": "Too many failed attempts", "remaining": remaining}, status=429
+                {"error": "Too many failed attempts", "remaining": remaining},
+                status=429,
             )
 
         # 解析请求
@@ -877,10 +886,19 @@ class WebAdminHandler:
             logs = [line for line in logs if level in line]
             # 重新计算过滤后的总页数
             filtered_count = len(logs)
-            total_pages = max(1, (filtered_count + page_size - 1) // page_size) if filtered_count > 0 else 1
+            total_pages = (
+                max(1, (filtered_count + page_size - 1) // page_size)
+                if filtered_count > 0
+                else 1
+            )
 
         return web.json_response(
-            {"logs": logs, "page": page, "total_pages": total_pages, "total_count": total_count}
+            {
+                "logs": logs,
+                "page": page,
+                "total_pages": total_pages,
+                "total_count": total_count,
+            }
         )
 
     async def handle_presets(self, request: web.Request) -> web.Response:

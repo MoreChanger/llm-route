@@ -98,9 +98,13 @@ async def run_headless(
 
         # 提示 Web 管理界面地址
         if web_admin_handler and web_admin_handler.auth_manager.has_password():
-            safe_print(f"Web 管理界面: http://{server.config.host}:{server.config.port}/_admin")
+            safe_print(
+                f"Web 管理界面: http://{server.config.host}:{server.config.port}/_admin"
+            )
         elif web_admin_handler:
-            safe_print(f"Web 管理界面: http://{server.config.host}:{server.config.port}/_admin (未设置密码)")
+            safe_print(
+                f"Web 管理界面: http://{server.config.host}:{server.config.port}/_admin (未设置密码)"
+            )
 
         safe_print("按 Ctrl+C 停止服务...")
         # 等待关闭信号
@@ -303,7 +307,9 @@ def main():
         # 运行
         if headless:
             shutdown_event = asyncio.Event()
-            asyncio.run(run_headless(server, log_manager, shutdown_event, web_admin_handler))
+            asyncio.run(
+                run_headless(server, log_manager, shutdown_event, web_admin_handler)
+            )
         else:
             asyncio.run(run_with_tray(server, log_manager, config_path))
     except Exception:

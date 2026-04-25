@@ -164,7 +164,9 @@ class TestAdminAuthManager:
         token = auth_manager.create_session()
 
         # 手动设置会话过期
-        auth_manager._sessions[token].created_at = time.time() - 25 * 60 * 60  # 25 小时前
+        auth_manager._sessions[token].created_at = (
+            time.time() - 25 * 60 * 60
+        )  # 25 小时前
 
         assert auth_manager.validate_session(token) is False
 

@@ -35,7 +35,9 @@ class TestSanitizeSensitiveContent:
 
     def test_json_multiple_headers(self):
         """测试 JSON 格式多个敏感头"""
-        content = '{"Authorization": "Bearer key1", "x-api-key": "key2", "other": "value"}'
+        content = (
+            '{"Authorization": "Bearer key1", "x-api-key": "key2", "other": "value"}'
+        )
         result = sanitize_sensitive_content(content)
         assert "key1" not in result
         assert "key2" not in result
@@ -45,14 +47,14 @@ class TestSanitizeSensitiveContent:
 
     def test_http_authorization_header(self):
         """测试 HTTP 头格式的 Authorization"""
-        content = 'Authorization: Bearer sk-test-key\nContent-Type: application/json'
+        content = "Authorization: Bearer sk-test-key\nContent-Type: application/json"
         result = sanitize_sensitive_content(content)
         assert "sk-test-key" not in result
         assert "[REDACTED]" in result
 
     def test_http_x_api_key_header(self):
         """测试 HTTP 头格式的 x-api-key"""
-        content = 'x-api-key: my-secret-key\nHost: api.example.com'
+        content = "x-api-key: my-secret-key\nHost: api.example.com"
         result = sanitize_sensitive_content(content)
         assert "my-secret-key" not in result
         assert "[REDACTED]" in result
