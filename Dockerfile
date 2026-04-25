@@ -27,8 +27,9 @@ FROM python:3.11-slim AS headless
 
 WORKDIR /app
 
-# Create non-root user
+# Create non-root user and required directories
 RUN useradd -m -u 1000 llmroute && \
+    mkdir -p /app/logs && \
     chown -R llmroute:llmroute /app
 
 # Copy installed packages from builder
