@@ -733,7 +733,17 @@ class WebAdminHandler:
         此方法幂等，重复调用不会重复注册路由。
         """
         # 检查路由是否已注册（支持服务重启场景）
-        existing_routes = {r.path for r in app.router.routes()}
+        # 使用 resource.canonical 获取路径，兼容不同 aiohttp 版本
+        existing_routes = set()
+        for r in app.router.routes():
+            try:
+                # 尝试获取路径（兼容不同 aiohttp 版本）
+                if hasattr(r, "path"):
+                    existing_routes.add(r.path)
+                elif hasattr(r, "resource") and r.resource:
+                    existing_routes.add(r.resource.canonical)
+            except Exception:
+                pass
         if "/_admin/api/login" in existing_routes:
             return
 
