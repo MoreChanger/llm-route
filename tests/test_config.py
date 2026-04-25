@@ -270,3 +270,126 @@ routes: []
         # 无密码字段，使用默认值
         assert config.admin_password == "123456"
         assert config.admin_password_hash is None
+
+
+class TestActivePreset:
+    def test_load_config_with_active_preset(self, tmp_path: Path):
+        """测试加载包含 _active_preset 的配置"""
+        config_content = """
+_active_preset: jdcloud
+host: 0.0.0.0
+port: 8087
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        config = load_config(str(config_file))
+        assert config._active_preset == "jdcloud"
+
+    def test_load_config_without_active_preset(self, tmp_path: Path):
+        """测试加载不包含 _active_preset 的配置"""
+        config_content = """
+host: 0.0.0.0
+port: 8087
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        config = load_config(str(config_file))
+        assert config._active_preset is None
+
+    def test_save_config_with_active_preset(self, tmp_path: Path):
+        """测试保存时写入 _active_preset"""
+        from src.config import save_config
+
+        config = Config()
+        config._active_preset = "my-preset"
+        config_file = tmp_path / "config.yaml"
+
+        save_config(config, str(config_file))
+
+        # 重新加载验证
+        loaded = load_config(str(config_file))
+        assert loaded._active_preset == "my-preset"
+
+    def test_save_config_without_active_preset(self, tmp_path: Path):
+        """测试保存时不写入 _active_preset（当为 None）"""
+        from src.config import save_config
+
+        config = Config()
+        config._active_preset = None
+        config_file = tmp_path / "config.yaml"
+
+        save_config(config, str(config_file))
+
+        # 验证文件中不包含 _active_preset 字段
+        content = config_file.read_text()
+        assert "_active_preset" not in content
+
+    def test_apply_preset_sets_active_preset(self, tmp_path: Path):
+        """测试应用预设时设置 _active_preset"""
+        config_content = """
+upstreams:
+  old:
+    url: https://old.example.com
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        preset_content = """
+upstreams:
+  new:
+    url: https://new.example.com
+"""
+        preset_file = tmp_path / "preset.yaml"
+        preset_file.write_text(preset_content)
+
+        result = apply_preset(preset_file, str(config_file), "my-preset")
+        assert result is True
+
+        config = load_config(str(config_file))
+        assert config._active_preset == "my-preset"
+
+    def test_apply_preset_without_name_no_marker(self, tmp_path: Path):
+        """测试应用预设时不传名称，不设置标记"""
+        config_content = """
+upstreams:
+  old:
+    url: https://old.example.com
+"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        preset_content = """
+upstreams:
+  new:
+    url: https://new.example.com
+"""
+        preset_file = tmp_path / "preset.yaml"
+        preset_file.write_text(preset_content)
+
+        result = apply_preset(preset_file, str(config_file))
+        assert result is True
+
+        config = load_config(str(config_file))
+        assert config._active_preset is None
+
+    def test_apply_preset_special_chars_in_name(self, tmp_path: Path):
+        """测试预设名称包含特殊字符"""
+        config_content = "upstreams: {}"
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(config_content)
+
+        preset_content = """
+upstreams:
+  test:
+    url: https://test.example.com
+"""
+        preset_file = tmp_path / "preset.yaml"
+        preset_file.write_text(preset_content)
+
+        result = apply_preset(preset_file, str(config_file), "jd-cloud_v2.0")
+        assert result is True
+
+        config = load_config(str(config_file))
+        assert config._active_preset == "jd-cloud_v2.0"

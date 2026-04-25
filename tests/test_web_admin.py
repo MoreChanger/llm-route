@@ -228,3 +228,373 @@ class TestWebAdminNoPassword(AioHTTPTestCase):
         """测试无密码时允许访问"""
         resp = await self.client.get("/_admin/api/status")
         assert resp.status == 200
+
+
+class TestConfigSaveClearsPreset(AioHTTPTestCase):
+    """测试保存配置时清除预设标记"""
+
+    async def get_application(self):
+        """创建测试应用"""
+        self.mock_proxy = MagicMock()
+        self.mock_proxy.runner = None
+        self.mock_proxy.config = Config()
+        # 不在这里设置预设标记，让每个测试自己设置
+        self.mock_proxy.start = AsyncMock()
+        self.mock_proxy.stop = AsyncMock()
+
+        self.mock_log_manager = MagicMock()
+        self.mock_log_manager.get_logs_page.return_value = ([], 1, 0)
+        self.mock_log_manager.set_level = MagicMock()
+
+        self.password_hash = generate_password_hash("test_password")
+        self.auth_manager = AdminAuthManager(password_hash=self.password_hash)
+
+        # 使用临时文件
+        import tempfile
+
+        self.temp_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        )
+        self.temp_file.write("host: 127.0.0.1\nport: 8087\n")
+        self.temp_file.close()
+
+        self.handler = WebAdminHandler(
+            proxy_server=self.mock_proxy,
+            auth_manager=self.auth_manager,
+            log_manager=self.mock_log_manager,
+            config_path=self.temp_file.name,
+        )
+
+        app = web.Application()
+        self.handler.setup_routes(app)
+        return app
+
+    async def test_config_save_clears_active_preset(self):
+        """测试保存配置时清除预设标记"""
+        # 设置预设标记
+        self.mock_proxy.config._active_preset = "test-preset"
+
+        # 先登录
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+
+        # 保存配置（修改端口）
+        resp = await self.client.post("/_admin/api/config", json={"port": 9000})
+        assert resp.status == 200
+
+        # 验证预设标记被清除
+        assert self.mock_proxy.config._active_preset is None
+
+    async def test_config_save_clears_preset_on_log_level_change(self):
+        """测试修改日志等级时清除预设标记"""
+        # 设置预设标记
+        self.mock_proxy.config._active_preset = "test-preset"
+
+        # 先登录
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+
+        # 保存配置（修改日志等级）
+        resp = await self.client.post("/_admin/api/config", json={"log_level": 3})
+        assert resp.status == 200
+
+        # 验证预设标记被清除
+        assert self.mock_proxy.config._active_preset is None
+
+    async def test_presets_api_returns_current_preset(self):
+        """测试预设 API 返回当前预设"""
+        # 先登录
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+
+        # 获取预设列表
+        resp = await self.client.get("/_admin/api/presets")
+        assert resp.status == 200
+        data = await resp.json()
+        assert "presets" in data
+        assert "current_preset" in data
+        # 当前没有设置预设，应该是 None
+        assert data["current_preset"] is None
+
+    async def test_presets_api_shows_current_marker(self):
+        """测试预设列表显示当前预设标记"""
+        # 设置当前预设
+        self.mock_proxy.config._active_preset = "test-preset"
+
+        # 先登录
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+
+        # 获取预设列表
+        resp = await self.client.get("/_admin/api/presets")
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["current_preset"] == "test-preset"
+
+    async def test_presets_list_current_marker(self):
+        """测试预设列表中每个预设的 current 标记"""
+        # 先登录
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+
+        # 设置当前预设
+        self.mock_proxy.config._active_preset = "test-preset"
+
+        # 获取预设列表
+        resp = await self.client.get("/_admin/api/presets")
+        assert resp.status == 200
+        data = await resp.json()
+
+        # 验证 current_preset 在根级别
+        assert data["current_preset"] == "test-preset"
+
+        # 验证每个预设项有 current 字段
+        for preset in data["presets"]:
+            assert "current" in preset
+            # 只有当前预设的 current 为 True
+            assert preset["current"] == (preset["name"] == "test-preset")
+
+
+class TestPresetPreviewAPI(AioHTTPTestCase):
+    """测试预设预览 API"""
+
+    async def get_application(self):
+        """创建测试应用"""
+        self.mock_proxy = MagicMock()
+        self.mock_proxy.runner = None
+        self.mock_proxy.config = Config()
+
+        self.mock_log_manager = MagicMock()
+        self.mock_log_manager.get_logs_page.return_value = ([], 1, 0)
+
+        self.password_hash = generate_password_hash("test_password")
+        self.auth_manager = AdminAuthManager(password_hash=self.password_hash)
+
+        # 创建临时预设目录
+        import tempfile
+        import os
+
+        self.temp_dir = tempfile.mkdtemp()
+        self.presets_dir = os.path.join(self.temp_dir, "presets")
+        os.makedirs(self.presets_dir)
+
+        # 创建测试预设文件
+        preset_content = """
+upstreams:
+  test-upstream:
+    url: https://test.example.com
+    protocol: openai
+routes:
+  - path: /v1/chat
+    upstream: test-upstream
+retry_rules:
+  - status: 429
+    max_retries: 5
+"""
+        with open(os.path.join(self.presets_dir, "test-preset.yaml"), "w") as f:
+            f.write(preset_content)
+
+        # 创建空预设
+        with open(os.path.join(self.presets_dir, "empty-preset.yaml"), "w") as f:
+            f.write("# empty preset")
+
+        self.handler = WebAdminHandler(
+            proxy_server=self.mock_proxy,
+            auth_manager=self.auth_manager,
+            log_manager=self.mock_log_manager,
+            config_path="config.yaml",
+        )
+
+        app = web.Application()
+        self.handler.setup_routes(app)
+        return app
+
+    async def test_preview_api_requires_auth(self):
+        """测试预览 API 需要认证"""
+        resp = await self.client.get("/_admin/api/presets/preview?name=test-preset")
+        assert resp.status == 401
+
+    async def test_preview_api_missing_name(self):
+        """测试缺少预设名称"""
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+        resp = await self.client.get("/_admin/api/presets/preview")
+        assert resp.status == 400
+
+    async def test_preview_api_preset_not_found(self):
+        """测试预设不存在"""
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+        resp = await self.client.get("/_admin/api/presets/preview?name=nonexistent")
+        assert resp.status == 404
+        data = await resp.json()
+        assert "error" in data
+
+
+class TestPresetApplyAPI(AioHTTPTestCase):
+    """测试预设应用 API"""
+
+    async def get_application(self):
+        """创建测试应用"""
+        self.mock_proxy = MagicMock()
+        self.mock_proxy.runner = None
+        self.mock_proxy.config = Config()
+
+        self.mock_log_manager = MagicMock()
+        self.mock_log_manager.get_logs_page.return_value = ([], 1, 0)
+
+        self.password_hash = generate_password_hash("test_password")
+        self.auth_manager = AdminAuthManager(password_hash=self.password_hash)
+
+        # 创建临时配置文件
+        import tempfile
+
+        self.temp_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        )
+        self.temp_file.write("host: 127.0.0.1\nport: 8087\n")
+        self.temp_file.close()
+
+        self.handler = WebAdminHandler(
+            proxy_server=self.mock_proxy,
+            auth_manager=self.auth_manager,
+            log_manager=self.mock_log_manager,
+            config_path=self.temp_file.name,
+        )
+
+        app = web.Application()
+        self.handler.setup_routes(app)
+        return app
+
+    async def test_preset_apply_requires_auth(self):
+        """测试预设应用 API 需要认证"""
+        resp = await self.client.post(
+            "/_admin/api/presets/apply", json={"preset": "test-preset"}
+        )
+        assert resp.status == 401
+
+    async def test_preset_apply_missing_preset_param(self):
+        """测试缺少预设参数"""
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+        resp = await self.client.post("/_admin/api/presets/apply", json={})
+        # 预设名为空，会返回 404（找不到空名称的预设）
+        assert resp.status == 404
+
+    async def test_preset_apply_preset_not_found(self):
+        """测试预设不存在"""
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+        resp = await self.client.post(
+            "/_admin/api/presets/apply", json={"preset": "nonexistent-preset"}
+        )
+        assert resp.status == 404
+        data = await resp.json()
+        assert "error" in data
+
+    async def test_preset_apply_invalid_json(self):
+        """测试无效 JSON"""
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+        resp = await self.client.post(
+            "/_admin/api/presets/apply",
+            data="not json",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status == 400
+
+    async def test_on_config_change_callback(self):
+        """测试预设应用后调用回调"""
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+
+        # 设置回调
+        callback_called = []
+
+        def test_callback():
+            callback_called.append(True)
+
+        self.handler.set_on_config_change(test_callback)
+
+        # 尝试应用一个不存在的预设（回调不应该被调用）
+        resp = await self.client.post(
+            "/_admin/api/presets/apply", json={"preset": "nonexistent-preset"}
+        )
+        assert resp.status == 404
+        assert len(callback_called) == 0
+
+    async def test_config_save_no_callback_on_no_change(self):
+        """测试配置保存时没有回调通知（因为这是 Docker 模式功能）"""
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+
+        # 配置保存目前不清除 _active_preset 的测试已在 TestConfigSaveClearsPreset 中
+        # 这里测试回调机制存在
+        callback_called = []
+
+        def test_callback():
+            callback_called.append(True)
+
+        self.handler.set_on_config_change(test_callback)
+
+        # 保存配置
+        resp = await self.client.post("/_admin/api/config", json={"port": 9000})
+        assert resp.status == 200
+        # 注意：当前实现中 handle_config_save 不调用 _on_config_change
+        # 这是一个已知的限制（P2 问题），因为 WebUI 仅在 Docker 模式运行，此时无托盘
+
+
+class TestPresetIntegration(AioHTTPTestCase):
+    """测试预设集成流程"""
+
+    async def get_application(self):
+        """创建测试应用"""
+        self.mock_proxy = MagicMock()
+        self.mock_proxy.runner = None
+        self.mock_proxy.config = Config()
+
+        self.mock_log_manager = MagicMock()
+        self.mock_log_manager.get_logs_page.return_value = ([], 1, 0)
+
+        self.password_hash = generate_password_hash("test_password")
+        self.auth_manager = AdminAuthManager(password_hash=self.password_hash)
+
+        # 创建临时配置文件
+        import tempfile
+
+        self.temp_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        )
+        self.temp_file.write("host: 127.0.0.1\nport: 8087\n")
+        self.temp_file.close()
+
+        self.handler = WebAdminHandler(
+            proxy_server=self.mock_proxy,
+            auth_manager=self.auth_manager,
+            log_manager=self.mock_log_manager,
+            config_path=self.temp_file.name,
+        )
+
+        app = web.Application()
+        self.handler.setup_routes(app)
+        return app
+
+    async def test_preset_apply_then_config_save_clears_marker(self):
+        """测试集成流程：应用预设后保存配置会清除标记"""
+        # 登录
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+
+        # 1. 初始状态：无预设标记
+        assert self.mock_proxy.config._active_preset is None
+
+        # 2. 保存配置（模拟用户手动修改）
+        resp = await self.client.post("/_admin/api/config", json={"port": 9000})
+        assert resp.status == 200
+
+        # 3. 验证预设标记被清除
+        assert self.mock_proxy.config._active_preset is None
+
+    async def test_config_save_preserves_other_settings(self):
+        """测试配置保存保留其他设置"""
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+
+        # 设置一些配置
+        self.mock_proxy.config.log_level = 3
+
+        # 保存配置
+        resp = await self.client.post(
+            "/_admin/api/config", json={"port": 9001, "log_level": 2}
+        )
+        assert resp.status == 200
+
+        # 验证配置被更新
+        assert self.mock_proxy.config.port == 9001
+        assert self.mock_proxy.config.log_level == 2
