@@ -5,7 +5,6 @@
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 
 def is_docker_environment() -> bool:

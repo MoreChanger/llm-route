@@ -1,5 +1,4 @@
 """日志文件管理模块"""
-import os
 import sys
 import time
 from datetime import datetime

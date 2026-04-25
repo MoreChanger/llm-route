@@ -258,7 +258,7 @@ def main():
             asyncio.run(run_headless(server, log_manager, shutdown_event))
         else:
             asyncio.run(run_with_tray(server, log_manager, config_path))
-    except Exception as e:
+    except Exception:
         import traceback
         # 写入错误到文件
         error_file = Path(__file__).parent.parent / "error.log"
@@ -267,7 +267,7 @@ def main():
         try:
             with open(error_file, "w", encoding="utf-8") as f:
                 f.write(traceback.format_exc())
-        except:
+        except Exception:
             pass
         raise
     finally:
