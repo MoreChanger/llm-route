@@ -2,8 +2,8 @@ host: 0.0.0.0
 port: 8087
 log_level: 2
 # Web 管理界面密码（bcrypt 哈希）
-# 生成方法: python -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt()).decode())"
-# admin_password_hash: $2b$12$...
+# Docker 首次启动时会自动生成随机密码并写入此字段
+admin_password_hash:
 upstreams:
   anthropic:
     url: https://modelservice.jdcloud.com/coding/anthropic

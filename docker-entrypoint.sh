@@ -33,6 +33,39 @@ if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; then
     fi
 fi
 
+# Generate admin password if not set
+CONFIG_FILE="/app/config.yaml"
+if [ -f "$CONFIG_FILE" ]; then
+    # Check if admin_password_hash is empty or not set
+    if ! grep -q "admin_password_hash:.*\$2[aby]\$" "$CONFIG_FILE" 2>/dev/null; then
+        echo ""
+        echo "=============================================="
+        echo "Generating admin password for Web Dashboard..."
+        echo "=============================================="
+
+        # Generate a random 16-character password
+        RANDOM_PASSWORD=$(python -c "import secrets; print(secrets.token_urlsafe(12))")
+
+        # Generate bcrypt hash
+        PASSWORD_HASH=$(python -c "import bcrypt; print(bcrypt.hashpw(b'$RANDOM_PASSWORD', bcrypt.gensalt()).decode())")
+
+        # Update config.yaml
+        if grep -q "^admin_password_hash:" "$CONFIG_FILE"; then
+            # Replace existing empty or commented line
+            sed -i "s|^admin_password_hash:.*|admin_password_hash: $PASSWORD_HASH|" "$CONFIG_FILE"
+        else
+            # Add after log_level line
+            sed -i "/^log_level:/a admin_password_hash: $PASSWORD_HASH" "$CONFIG_FILE"
+        fi
+
+        echo ""
+        echo "=============================================="
+        echo "ADMIN PASSWORD (SAVE THIS!): $RANDOM_PASSWORD"
+        echo "=============================================="
+        echo ""
+    fi
+fi
+
 # Log startup info
 echo "Starting LLM-ROUTE..."
 echo "  Platform: $(uname -s)"
