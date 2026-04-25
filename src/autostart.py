@@ -107,16 +107,14 @@ class _WindowsAutoStart(_AutoStartImpl):
         import winreg
 
         try:
-            key = winreg.OpenKey(
+            with winreg.OpenKey(
                 winreg.HKEY_CURRENT_USER,
                 self.REG_PATH,
                 0,
                 winreg.KEY_WRITE,
-            )
-
-            exe_path = self._get_executable_path()
-            winreg.SetValueEx(key, self.app_name, 0, winreg.REG_SZ, exe_path)
-            winreg.CloseKey(key)
+            ) as key:
+                exe_path = self._get_executable_path()
+                winreg.SetValueEx(key, self.app_name, 0, winreg.REG_SZ, exe_path)
             return True
         except WindowsError:
             return False
@@ -125,19 +123,16 @@ class _WindowsAutoStart(_AutoStartImpl):
         import winreg
 
         try:
-            key = winreg.OpenKey(
+            with winreg.OpenKey(
                 winreg.HKEY_CURRENT_USER,
                 self.REG_PATH,
                 0,
                 winreg.KEY_WRITE,
-            )
-
-            try:
-                winreg.DeleteValue(key, self.app_name)
-            except WindowsError:
-                pass  # 键不存在，视为成功
-
-            winreg.CloseKey(key)
+            ) as key:
+                try:
+                    winreg.DeleteValue(key, self.app_name)
+                except WindowsError:
+                    pass  # 键不存在，视为成功
             return True
         except WindowsError:
             return False
@@ -146,14 +141,13 @@ class _WindowsAutoStart(_AutoStartImpl):
         import winreg
 
         try:
-            key = winreg.OpenKey(
+            with winreg.OpenKey(
                 winreg.HKEY_CURRENT_USER,
                 self.REG_PATH,
                 0,
                 winreg.KEY_READ,
-            )
-            winreg.QueryValueEx(key, self.app_name)
-            winreg.CloseKey(key)
+            ) as key:
+                winreg.QueryValueEx(key, self.app_name)
             return True
         except WindowsError:
             return False
@@ -200,11 +194,19 @@ X-GNOME-Autostart-enabled=true
                 if icon_candidate.exists():
                     icon_path = str(icon_candidate)
 
+            # Desktop Entry 规范转义：处理特殊字符
+            # % 字符需要转义为 %%
+            # 换行符和制表符需要移除
+            escaped_app_name = self.app_name.replace("%", "%%").replace("\n", "").replace("\t", "")
+            escaped_exec_path = exec_path.replace("%", "%%")
+            escaped_icon_path = icon_path.replace("%", "%%") if icon_path else ""
+            escaped_comment = f"{self.app_name} LLM API Router".replace("%", "%%").replace("\n", "").replace("\t", "")
+
             content = self.DESKTOP_ENTRY.format(
-                app_name=self.app_name,
-                exec_path=exec_path,
-                icon_path=icon_path,
-                comment=f"{self.app_name} LLM API Router",
+                app_name=escaped_app_name,
+                exec_path=escaped_exec_path,
+                icon_path=escaped_icon_path,
+                comment=escaped_comment,
             )
 
             with open(desktop_file, "w", encoding="utf-8") as f:
@@ -271,13 +273,28 @@ class _MacOSAutoStart(_AutoStartImpl):
             exec_path = self._get_executable_path()
             label = self._get_label()
 
+            # 使用 xml.sax.saxutils 转义 XML 特殊字符
+            from xml.sax.saxutils import escape
+            escaped_label = escape(label)
+            escaped_exec_path = escape(exec_path)
+
             content = self.PLIST_TEMPLATE.format(
-                label=label,
-                exec_path=exec_path,
+                label=escaped_label,
+                exec_path=escaped_exec_path,
             )
 
             with open(plist_file, "w", encoding="utf-8") as f:
                 f.write(content)
+
+            # 加载 LaunchAgent 使其立即生效
+            try:
+                subprocess.run(
+                    ["launchctl", "load", str(plist_file)],
+                    capture_output=True,
+                    timeout=5,
+                )
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass  # 加载失败不阻止启用，用户可以注销后生效
 
             return True
         except (IOError, OSError, PermissionError):
@@ -286,20 +303,30 @@ class _MacOSAutoStart(_AutoStartImpl):
     def disable(self) -> bool:
         try:
             plist_file = self._get_plist_file()
+            label = self._get_label()
 
-            # 先执行 launchctl unload
             if plist_file.exists():
+                # 先执行 launchctl unload
                 try:
                     subprocess.run(
                         ["launchctl", "unload", str(plist_file)],
+                        capture_output=True,
+                        timeout=10,
+                    )
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    pass
+
+                # 执行 launchctl remove 移除服务注册
+                try:
+                    subprocess.run(
+                        ["launchctl", "remove", label],
                         capture_output=True,
                         timeout=5,
                     )
                 except (subprocess.TimeoutExpired, FileNotFoundError):
                     pass
 
-            # 删除 plist 文件
-            if plist_file.exists():
+                # 删除 plist 文件
                 plist_file.unlink()
 
             return True
@@ -314,10 +341,13 @@ class _UnsupportedAutoStart(_AutoStartImpl):
     """不支持的平台"""
 
     def enable(self) -> bool:
-        raise UnsupportedPlatformError(f"Platform '{sys.platform}' does not support autostart")
+        # 返回 False 而不是抛出异常，保持与基类契约一致
+        # 调用者可以通过 is_supported() 预先检查
+        return False
 
     def disable(self) -> bool:
-        raise UnsupportedPlatformError(f"Platform '{sys.platform}' does not support autostart")
+        # 返回 False 而不是抛出异常，保持与基类契约一致
+        return False
 
     def is_enabled(self) -> bool:
         return False

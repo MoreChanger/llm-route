@@ -76,20 +76,18 @@ def get_config_path(args) -> str:
     return str(local_config)
 
 
-async def run_headless(server: ProxyServer, log_manager: LogManager):
+async def run_headless(server: ProxyServer, log_manager: LogManager, shutdown_event: asyncio.Event):
     """无头模式运行
 
     仅启动服务，无托盘界面。
-    通过 Ctrl+C 停止服务。
+    通过 Ctrl+C 或 SIGTERM 停止服务。
     """
     try:
         await server.start()
         safe_print(f"服务运行中，监听 {server.config.host}:{server.config.port}")
         safe_print("按 Ctrl+C 停止服务...")
-        # 保持运行
-        while True:
-            await asyncio.sleep(1)
-    except KeyboardInterrupt:
+        # 等待关闭信号
+        await shutdown_event.wait()
         safe_print("\n正在停止服务...")
     finally:
         await server.stop()
@@ -181,12 +179,14 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
 
 def main():
     """主入口"""
+    # 初始化 lock 变量，防止 finally 块中的 UnboundLocalError
+    lock = None
+
     # 检测 Docker 环境
     in_docker = is_docker_environment()
     if in_docker:
         safe_print("检测到 Docker 环境")
         # Docker 环境中跳过单实例锁检查（容器隔离天然保证单实例）
-        lock = None
     else:
         # 单实例检查
         lock = SingleInstanceLock("llm-route")
@@ -238,20 +238,24 @@ def main():
         # 创建代理服务器
         server = ProxyServer(config, log_manager)
 
+        # 使用 Event 来协调优雅关闭
+        shutdown_event = None
+
         # 设置信号处理（Docker 环境尤为重要）
         def signal_handler(signum, frame):
+            nonlocal shutdown_event
             safe_print(f"\n收到信号 {signum}，正在停止服务...")
-            # 触发停止
-            if server.runner is not None:
-                asyncio.run_coroutine_threadsafe(server.stop(), asyncio.get_event_loop())
-            log_manager.stop()
+            # 使用 Event 通知主循环停止，而不是直接调用 asyncio
+            if shutdown_event is not None:
+                shutdown_event.set()
 
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
 
         # 运行
         if headless:
-            asyncio.run(run_headless(server, log_manager))
+            shutdown_event = asyncio.Event()
+            asyncio.run(run_headless(server, log_manager, shutdown_event))
         else:
             asyncio.run(run_with_tray(server, log_manager, config_path))
     except Exception as e:

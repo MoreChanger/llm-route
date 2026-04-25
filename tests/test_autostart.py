@@ -345,11 +345,16 @@ class TestMacOSAutoStart:
         with patch.object(impl, "_get_plist_file", return_value=plist_file):
             with patch("subprocess.run") as mock_run:
                 result = impl.disable()
-                mock_run.assert_called_once()
-                args = mock_run.call_args[0][0]
-                assert args[0] == "launchctl"
-                assert args[1] == "unload"
+                # 应该调用两次：unload 和 remove
+                assert mock_run.call_count == 2
+                # 检查第一个调用是 unload
+                assert mock_run.call_args_list[0][0][0][0] == "launchctl"
+                assert mock_run.call_args_list[0][0][0][1] == "unload"
+                # 检查第二个调用是 remove
+                assert mock_run.call_args_list[1][0][0][0] == "launchctl"
+                assert mock_run.call_args_list[1][0][0][1] == "remove"
                 assert result is True
+                assert not plist_file.exists()
 
     def test_disable_launchctl_timeout(self, tmp_path):
         """测试 launchctl unload 超时"""
@@ -389,17 +394,15 @@ class TestMacOSAutoStart:
 class TestUnsupportedAutoStart:
     """测试 _UnsupportedAutoStart 类"""
 
-    def test_enable_raises_exception(self):
-        """测试启用抛出异常"""
+    def test_enable_returns_false(self):
+        """测试启用返回 False"""
         impl = _UnsupportedAutoStart("TestApp")
-        with pytest.raises(UnsupportedPlatformError):
-            impl.enable()
+        assert impl.enable() is False
 
-    def test_disable_raises_exception(self):
-        """测试禁用抛出异常"""
+    def test_disable_returns_false(self):
+        """测试禁用返回 False"""
         impl = _UnsupportedAutoStart("TestApp")
-        with pytest.raises(UnsupportedPlatformError):
-            impl.disable()
+        assert impl.disable() is False
 
     def test_is_enabled_returns_false(self):
         """测试 is_enabled 返回 False"""

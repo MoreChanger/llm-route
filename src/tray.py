@@ -385,11 +385,12 @@ class TrayManager:
     def _toggle_auto_start(self):
         """切换开机自启"""
         if self._autostart_manager.is_enabled():
-            self._autostart_manager.disable()
-            self._auto_start = False
+            success = self._autostart_manager.disable()
         else:
-            self._autostart_manager.enable()
-            self._auto_start = True
+            success = self._autostart_manager.enable()
+
+        # 无论成功与否，重新查询实际状态以保持同步
+        self._auto_start = self._autostart_manager.is_enabled()
         self._update_menu()
 
     def _update_menu(self):

@@ -83,6 +83,8 @@ class ProxyServer:
         """启动代理服务器"""
         # 创建 aiohttp 应用
         self.app = web.Application()
+        # 添加健康检查端点（必须在 catch-all 路由之前）
+        self.app.router.add_get("/health", self.handle_health)
         self.app.router.add_route("*", "/{path:.*}", self.handle_request)
 
         # 创建 HTTP 客户端会话（设置超时）
@@ -116,6 +118,13 @@ class ProxyServer:
         self.site = None
         self.app = None
         self.log("服务已停止")
+
+    async def handle_health(self, request: web.Request) -> web.Response:
+        """健康检查端点
+
+        用于 Docker HEALTHCHECK 和 Kubernetes 探针。
+        """
+        return web.Response(text="OK", status=200, content_type="text/plain")
 
     async def handle_request(self, request: web.Request) -> web.Response:
         """处理所有请求"""
