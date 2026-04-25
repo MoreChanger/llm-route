@@ -45,6 +45,7 @@ class Config:
     port: Union[int, str] = 8087  # int 或 "auto"
     log_level: int = 2  # 1=基础, 2=详细, 3=完整
     log_retention_days: int = 7  # 日志保留天数
+    log_structured: bool = False  # 是否使用结构化日志 (JSON格式)
     admin_password: str = "123456"  # 明文密码，首次登录后应修改
     admin_password_hash: Optional[str] = None  # bcrypt 哈希（可选，优先使用）
     upstreams: dict[str, Upstream] = field(default_factory=dict)
@@ -167,6 +168,7 @@ def load_config(config_path: str) -> Config:
     config.port = data.get("port", 8087)
     config.log_level = data.get("log_level", 2)
     config.log_retention_days = data.get("log_retention_days", 7)
+    config.log_structured = data.get("log_structured", False)
     config.admin_password = data.get("admin_password", "123456")
     config.admin_password_hash = data.get("admin_password_hash")
 
@@ -231,6 +233,8 @@ def save_config(config: Config, config_path: str):
     data["log_level"] = config.log_level
     if config.log_retention_days != 7:
         data["log_retention_days"] = config.log_retention_days
+    if config.log_structured:
+        data["log_structured"] = config.log_structured
     if config.admin_password != "123456":
         # 只有非默认密码才保存
         data["admin_password"] = config.admin_password

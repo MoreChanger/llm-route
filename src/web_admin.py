@@ -516,8 +516,47 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
                         <input type="number" id="configLogRetention" min="0" max="365" placeholder="7">
                         <div style="font-size:12px;color:#888;margin-top:4px;">0 表示永久保留</div>
                     </div>
+                    <div class="form-group">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" id="configLogStructured" style="width:16px;height:16px;">
+                            <span>启用结构化日志 (JSON格式)</span>
+                        </label>
+                    </div>
                     <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
                     <div class="notice">⚠️ 配置修改后需要重启容器才能生效</div>
+                </div>
+            </div>
+
+            <!-- 日志统计 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">日志统计</span>
+                </div>
+                <div class="card-content">
+                    <div class="stat-row">
+                        <span class="stat-label">当前日志文件</span>
+                        <span id="logCurrentFile" class="stat-value">--</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">当前文件大小</span>
+                        <span id="logCurrentSize" class="stat-value">--</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">当前行数</span>
+                        <span id="logCurrentLines" class="stat-value">--</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">日志文件数</span>
+                        <span id="logFileCount" class="stat-value">--</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">压缩文件数</span>
+                        <span id="logCompressedCount" class="stat-value">--</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">总日志大小</span>
+                        <span id="logTotalSize" class="stat-value">--</span>
+                    </div>
                 </div>
             </div>
 
@@ -773,10 +812,34 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
                 document.getElementById('configPort').value = data.port || 8087;
                 document.getElementById('configLogLevel').value = data.log_level || 2;
                 document.getElementById('configLogRetention').value = data.log_retention_days || 7;
+                document.getElementById('configLogStructured').checked = data.log_structured || false;
                 renderConfigView(data);
+                loadLogStats();
             } catch (e) {
                 console.error('加载配置失败:', e);
             }
+        }
+
+        async function loadLogStats() {
+            try {
+                const resp = await api('/log-stats');
+                const data = await resp.json();
+                document.getElementById('logCurrentFile').textContent = data.current_file || '--';
+                document.getElementById('logCurrentSize').textContent = data.current_size ? formatBytes(data.current_size) : '--';
+                document.getElementById('logCurrentLines').textContent = data.current_lines || 0;
+                document.getElementById('logFileCount').textContent = data.files || 0;
+                document.getElementById('logCompressedCount').textContent = data.compressed_files || 0;
+                document.getElementById('logTotalSize').textContent = data.total_size_human || '--';
+            } catch (e) {
+                console.error('加载日志统计失败:', e);
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+            return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB';
         }
 
         function renderConfigView(config) {
@@ -852,6 +915,7 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
             const port = parseInt(document.getElementById('configPort').value);
             const logLevel = parseInt(document.getElementById('configLogLevel').value);
             const logRetention = parseInt(document.getElementById('configLogRetention').value);
+            const logStructured = document.getElementById('configLogStructured').checked;
 
             if (!port || port < 1 || port > 65535) {
                 alert('请输入有效的端口号 (1-65535)');
@@ -868,7 +932,12 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
                 const resp = await api('/config', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({port, log_level: logLevel, log_retention_days: logRetention})
+                    body: JSON.stringify({
+                        port,
+                        log_level: logLevel,
+                        log_retention_days: logRetention,
+                        log_structured: logStructured
+                    })
                 });
                 const data = await resp.json();
                 if (resp.ok) {
@@ -1039,6 +1108,11 @@ class WebAdminHandler:
         )
         app.router.add_post(
             "/_admin/api/password", self.require_auth(self.handle_password_change)
+        )
+
+        # 日志统计端点
+        app.router.add_get(
+            "/_admin/api/log-stats", self.require_auth(self.handle_log_stats)
         )
 
     def require_auth(self, handler):
@@ -1248,6 +1322,7 @@ class WebAdminHandler:
                 "port": config.port,
                 "log_level": config.log_level,
                 "log_retention_days": config.log_retention_days,
+                "log_structured": config.log_structured,
                 "host": config.host,
                 "upstreams": upstreams,
                 "routes": routes,
@@ -1282,6 +1357,9 @@ class WebAdminHandler:
             retention = data["log_retention_days"]
             if isinstance(retention, int) and 0 <= retention <= 365:
                 config.log_retention_days = retention
+
+        if "log_structured" in data:
+            config.log_structured = bool(data["log_structured"])
 
         # 保存到文件
         try:
@@ -1368,3 +1446,8 @@ class WebAdminHandler:
                 "warning": "密码已修改，但无法保存到配置文件。\n\n解决方法：在宿主机执行 chmod 666 config.yaml\n\n重启容器后需要重新设置密码。"
             })
         return web.json_response({"success": True})
+
+    async def handle_log_stats(self, request: web.Request) -> web.Response:
+        """返回日志统计信息"""
+        stats = self.log_manager.get_log_stats()
+        return web.json_response(stats)
