@@ -213,29 +213,19 @@ class TrayManager:
         pass
 
     def _detect_current_preset(self) -> Optional[str]:
-        """检测当前使用的是哪个预设"""
-        from src.config import list_presets, load_config
+        """检测当前使用的是哪个预设（从配置文件读取）"""
+        from src.config import load_config
 
         try:
             current_config = load_config(self.config_path)
-            presets = list_presets()
-
-            for name, preset_path in presets:
-                with open(preset_path, "r", encoding="utf-8") as f:
-                    preset_data = __import__("yaml").safe_load(f) or {}
-
-                # 比较 upstreams 和 routes
-                if preset_data.get("upstreams") == {
-                    k: {"url": v.url, "protocol": v.protocol}
-                    for k, v in current_config.upstreams.items()
-                } and preset_data.get("routes") == [
-                    {"path": r.path, "upstream": r.upstream}
-                    for r in current_config.routes
-                ]:
-                    return name
+            return current_config._active_preset
         except Exception:
-            pass
-        return None
+            return None
+
+    def refresh_preset(self):
+        """刷新当前预设标记（当配置从 WebUI 更改时调用）"""
+        self._current_preset = self._detect_current_preset()
+        self._update_menu()
 
     def _load_preset(self, name: str, preset_path):
         """加载预设"""
@@ -244,7 +234,7 @@ class TrayManager:
         if name == self._current_preset:
             return  # 已经是当前预设
 
-        if apply_preset(preset_path, self.config_path):
+        if apply_preset(preset_path, self.config_path, name):
             self._current_preset = name
             self.on_preset_change(name)
             self._update_menu()

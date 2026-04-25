@@ -82,12 +82,13 @@ def list_presets() -> list[tuple[str, Path]]:
     return presets
 
 
-def apply_preset(preset_path: Path, config_path: str) -> bool:
+def apply_preset(preset_path: Path, config_path: str, preset_name: Optional[str] = None) -> bool:
     """应用预设到配置文件
 
     Args:
         preset_path: 预设文件路径
         config_path: 目标配置文件路径
+        preset_name: 预设名称（可选，用于标记当前激活的预设）
 
     Returns:
         是否成功
@@ -147,6 +148,10 @@ def apply_preset(preset_path: Path, config_path: str) -> bool:
         # 10. retry_rules
         if preset_data.get("retry_rules"):
             ordered_config["retry_rules"] = preset_data["retry_rules"]
+
+        # 11. _active_preset（预设标记）
+        if preset_name:
+            ordered_config["_active_preset"] = preset_name
 
         # 写回配置文件（使用 sort_keys=False 保持顺序）
         with open(config_file, "w", encoding="utf-8") as f:

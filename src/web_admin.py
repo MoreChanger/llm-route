@@ -16,7 +16,7 @@ from typing import Optional, TYPE_CHECKING
 from aiohttp import web
 
 from src.auth import AdminAuthManager
-from src.config import list_presets, apply_preset, save_config
+from src.config import list_presets, apply_preset, save_config, load_config
 
 if TYPE_CHECKING:
     from src.proxy import ProxyServer
@@ -1046,6 +1046,11 @@ class WebAdminHandler:
         self.log_manager = log_manager
         self.config_path = config_path
         self._start_time: Optional[float] = None
+        self._on_config_change: Optional[callable] = None  # 配置变更回调
+
+    def set_on_config_change(self, callback: Optional[callable]) -> None:
+        """设置配置变更回调（用于通知托盘刷新）"""
+        self._on_config_change = callback
 
     def set_start_time(self, start_time: float) -> None:
         """设置服务启动时间"""
@@ -1277,8 +1282,13 @@ class WebAdminHandler:
             return web.json_response({"error": "Preset not found"}, status=404)
 
         # 应用预设
-        if apply_preset(preset_path, self.config_path):
-            return web.json_response({"success": True})
+        if apply_preset(preset_path, self.config_path, preset_name):
+            # 重新加载配置
+            self.proxy_server.config = load_config(self.config_path)
+            # 通知托盘刷新预设标记
+            if self._on_config_change:
+                self._on_config_change()
+            return web.json_response({"success": True, "preset": preset_name})
         else:
             return web.json_response({"error": "Failed to apply preset"}, status=500)
 
