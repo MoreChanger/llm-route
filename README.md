@@ -1,6 +1,6 @@
 # LLM-ROUTE
 
-轻量级 LLM API 路由工具，支持自动重试和系统托盘。
+轻量级 LLM API 路由工具，支持自动重试和系统托盘。**跨平台支持 Windows、Linux、macOS 和 Docker。**
 
 > 本项目旨在解决大模型厂商超售导致请求频繁超时或出错的问题，通过智能重试机制提高 API 调用的稳定性。
 
@@ -14,6 +14,29 @@
   - 支持多轮对话
 - **系统托盘** — 最小化到托盘，右键菜单控制
 - **端口管理** — 自动检测端口占用，支持手动指定或随机分配
+- **跨平台** — 支持 Windows、Linux、macOS 和 Docker 部署
+
+## 平台支持
+
+| 功能 | Windows | Linux | macOS | Docker |
+|------|---------|-------|-------|--------|
+| 核心代理 | ✅ | ✅ | ✅ | ✅ |
+| 系统托盘 | ✅ | ⚠️ | ✅ | ❌ |
+| 开机自启 | ✅ | ⚠️ | ⚠️ | ❌ |
+| 复制代理地址 | ✅ | ⚠️ | ✅ | ❌ |
+| 端口对话框 | ✅ | ✅ | ✅ | ❌ |
+
+> ⚠️ Linux 需要 `gir1.2-appindicator3-0.1` 和 `xclip` 依赖
+> ⚠️ macOS 开机自启需要用户登录后首次运行时授权
+> ❌ Docker 默认 headless 模式运行
+
+### 功能降级级别
+
+LLM-ROUTE 会自动检测平台能力并进行降级：
+
+- **Level 1（完整功能）**：所有托盘功能可用
+- **Level 2（托盘降级）**：托盘可用，但剪贴板/对话框不可用
+- **Level 3（完全 headless）**：无 GUI，仅 API 代理功能
 
 ## 快速开始
 
@@ -51,6 +74,8 @@ retry_rules:
 
 ### 2. 运行
 
+#### Windows
+
 双击 `llm-route.exe` 启动，服务自动运行。
 
 或在命令行运行：
@@ -61,6 +86,79 @@ llm-route --headless         # 无头模式
 llm-route --port 9000        # 指定端口
 llm-route --config my.yaml   # 指定配置文件
 ```
+
+#### Linux
+
+**安装依赖（系统托盘需要）：**
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install gir1.2-appindicator3-0.1 xclip
+
+# Fedora
+sudo dnf install libappindicator-gtk3 xclip
+
+# Arch Linux
+sudo pacman -S libappindicator xclip
+```
+
+**运行：**
+
+```bash
+# 托盘模式（需要桌面环境）
+./llm-route
+
+# 无头模式（服务器环境）
+./llm-route --headless
+```
+
+#### macOS
+
+双击 `LLM-ROUTE.app` 启动，或在终端运行：
+
+```bash
+./llm-route                    # 托盘模式
+./llm-route --headless         # 无头模式
+```
+
+首次运行时，macOS 可能提示"无法验证开发者"，请在系统偏好设置 → 安全性与隐私中允许运行。
+
+#### Docker
+
+**快速启动：**
+
+```bash
+# 构建镜像
+docker build -t llm-route .
+
+# 运行容器
+docker run -d \
+  --name llm-route \
+  -p 8087:8087 \
+  -v $(pwd)/config.yaml:/app/config.yaml:ro \
+  llm-route
+```
+
+**使用 Docker Compose：**
+
+```bash
+# 启动
+docker compose up -d
+
+# 查看日志
+docker compose logs -f
+
+# 停止
+docker compose down
+```
+
+**Docker 环境变量：**
+
+| 变量 | 说明 |
+|------|------|
+| `LLM_ROUTE_PORT` | 覆盖端口配置 |
+| `LLM_ROUTE_LOG_LEVEL` | 日志等级 (1/2/3) |
+| `LLM_ROUTE_HEADLESS` | 强制 headless 模式 |
 
 ### 3. 配置 AI 工具
 
@@ -249,6 +347,34 @@ pip install -r requirements.txt
 python -m src.main
 ```
 
+## 构建
+
+### Windows
+
+```bash
+build.bat
+```
+
+输出：`dist/llm-route.exe`
+
+### Linux / macOS
+
+```bash
+chmod +x build.sh
+./build.sh
+```
+
+输出：
+- Linux: `dist/llm-route`
+- macOS: `dist/LLM-ROUTE.app`
+
+### 构建选项
+
+```bash
+./build.sh --clean    # 清理构建
+./build.sh --debug    # 调试模式
+```
+
 ## 开发
 
 ```bash
@@ -257,6 +383,9 @@ pip install -r requirements-dev.txt
 
 # 运行测试
 pytest
+
+# 运行测试（带覆盖率）
+pytest --cov=src
 
 # 打包
 pyinstaller build.spec
