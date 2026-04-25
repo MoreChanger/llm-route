@@ -27,6 +27,8 @@ elif current_system == "Darwin":
 # Platform-specific hidden imports
 hiddenimports = [
     'PIL._tkinter_finder',
+    'pystray',
+    'pystray._base',
 ]
 
 if current_system == "Linux":
@@ -39,10 +41,16 @@ if current_system == "Linux":
         'gi.repository.GdkPixbuf',
     ])
 elif current_system == "Windows":
-    hiddenimports.append('pystray._win32')
+    hiddenimports.extend([
+        'pystray._win32',
+        'pystray._win32.Notification',
+    ])
 elif current_system == "Darwin":
     # macOS uses pystray's native backend
-    hiddenimports.append('pystray._darwin')
+    hiddenimports.extend([
+        'pystray._darwin',
+        'pystray._darwin.Notification',
+    ])
 
 # Platform-specific data files
 datas = [
