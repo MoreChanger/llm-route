@@ -1,4 +1,5 @@
 """HTTP 代理服务模块"""
+
 import asyncio
 import json
 import time
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RequestContext:
     """请求上下文"""
+
     method: str
     path: str
     headers: dict
@@ -75,7 +77,9 @@ class ProxyServer:
         """获取日志列表"""
         return self.log_manager.get_logs()
 
-    def get_logs_page(self, page: int, page_size: int = 100) -> tuple[list[str], int, int]:
+    def get_logs_page(
+        self, page: int, page_size: int = 100
+    ) -> tuple[list[str], int, int]:
         """获取分页日志"""
         return self.log_manager.get_logs_page(page, page_size)
 
@@ -98,7 +102,7 @@ class ProxyServer:
         self.site = web.TCPSite(
             self.runner,
             self.config.host,
-            self.config.port if isinstance(self.config.port, int) else 8087
+            self.config.port if isinstance(self.config.port, int) else 8087,
         )
         await self.site.start()
 
@@ -137,7 +141,7 @@ class ProxyServer:
             body=body,
             query_string=request.query_string,
             start_time=time.time(),
-            _request=request
+            _request=request,
         )
 
         # 匹配路由
@@ -154,7 +158,10 @@ class ProxyServer:
         if ctx.upstream is None:
             # 记录配置错误
             elapsed_ms = (time.time() - ctx.start_time) * 1000
-            self.log(f"{ctx.method} {ctx.path} -> 502 Unknown upstream: {upstream_name} ({elapsed_ms:.0f}ms)", "ERROR")
+            self.log(
+                f"{ctx.method} {ctx.path} -> 502 Unknown upstream: {upstream_name} ({elapsed_ms:.0f}ms)",
+                "ERROR",
+            )
             return web.Response(status=502, text=f"Unknown upstream: {upstream_name}")
 
         # 新增：Responses API 转换分支
@@ -201,22 +208,23 @@ class ProxyServer:
                     status_code=response.status,
                     elapsed_ms=elapsed_ms,
                     retries=ctx.attempt,
-                    request_body=ctx.body.decode('utf-8', errors='ignore'),
-                    response_body=body.decode('utf-8', errors='ignore')
+                    request_body=ctx.body.decode("utf-8", errors="ignore"),
+                    response_body=body.decode("utf-8", errors="ignore"),
                 )
 
                 # 返回响应（过滤掉 hop-by-hop 头）
                 filtered_headers = self._filter_response_headers(response_headers)
                 return web.Response(
-                    status=response.status,
-                    body=body,
-                    headers=filtered_headers
+                    status=response.status, body=body, headers=filtered_headers
                 )
 
         except aiohttp.ClientError as e:
             # 记录错误日志
             elapsed_ms = (time.time() - ctx.start_time) * 1000
-            self.log(f"{ctx.method} {ctx.path} -> {ctx.matched_route.upstream} [ERROR] {elapsed_ms:.0f}ms - {str(e)}", "ERROR")
+            self.log(
+                f"{ctx.method} {ctx.path} -> {ctx.matched_route.upstream} [ERROR] {elapsed_ms:.0f}ms - {str(e)}",
+                "ERROR",
+            )
 
             # 连接错误，尝试重试
             if ctx.attempt < self._get_max_retries():
@@ -226,26 +234,31 @@ class ProxyServer:
     def _filter_headers(self, headers: dict) -> dict:
         """过滤请求头，移除 hop-by-hop 头"""
         hop_by_hop = {
-            'connection', 'keep-alive', 'proxy-authenticate',
-            'proxy-authorization', 'te', 'trailers', 'transfer-encoding',
-            'upgrade', 'host'
+            "connection",
+            "keep-alive",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "transfer-encoding",
+            "upgrade",
+            "host",
         }
-        return {
-            k: v for k, v in headers.items()
-            if k.lower() not in hop_by_hop
-        }
+        return {k: v for k, v in headers.items() if k.lower() not in hop_by_hop}
 
     def _filter_response_headers(self, headers: dict) -> dict:
         """过滤响应头"""
         hop_by_hop = {
-            'connection', 'keep-alive', 'proxy-authenticate',
-            'proxy-authorization', 'te', 'trailers', 'transfer-encoding',
-            'upgrade'
+            "connection",
+            "keep-alive",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "transfer-encoding",
+            "upgrade",
         }
-        return {
-            k: v for k, v in headers.items()
-            if k.lower() not in hop_by_hop
-        }
+        return {k: v for k, v in headers.items() if k.lower() not in hop_by_hop}
 
     def _should_retry(self, status: int, body: bytes, attempt: int) -> bool:
         """检查是否需要重试"""
@@ -256,7 +269,7 @@ class ProxyServer:
             if status == rule.status:
                 if rule.body_contains is None:
                     return True
-                if rule.body_contains in body.decode('utf-8', errors='ignore'):
+                if rule.body_contains in body.decode("utf-8", errors="ignore"):
                     return True
         return False
 
@@ -289,6 +302,7 @@ class ProxyServer:
 
         try:
             import json
+
             if body:
                 data = json.loads(body)
                 if data.get("stream") is True:
@@ -298,10 +312,7 @@ class ProxyServer:
 
         return False
 
-    async def _forward_streaming(
-        self,
-        ctx: RequestContext
-    ) -> web.StreamResponse:
+    async def _forward_streaming(self, ctx: RequestContext) -> web.StreamResponse:
         """处理流式请求"""
         # 准备请求头（移除 hop-by-hop 头）
         headers = self._filter_headers(ctx.headers)
@@ -318,7 +329,7 @@ class ProxyServer:
                 "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-            }
+            },
         )
         await response.prepare(ctx._request)
 
@@ -337,7 +348,7 @@ class ProxyServer:
 
                 # 记录流式请求完成
                 elapsed_ms = (time.time() - ctx.start_time) * 1000
-                resp_body = b"".join(resp_chunks).decode('utf-8', errors='ignore')
+                resp_body = b"".join(resp_chunks).decode("utf-8", errors="ignore")
                 self.log_manager.log_request(
                     method=ctx.method,
                     path=ctx.path,
@@ -345,22 +356,25 @@ class ProxyServer:
                     status_code=upstream_resp.status,
                     elapsed_ms=elapsed_ms,
                     retries=ctx.attempt,
-                    request_body=ctx.body.decode('utf-8', errors='ignore'),
-                    response_body=resp_body
+                    request_body=ctx.body.decode("utf-8", errors="ignore"),
+                    response_body=resp_body,
                 )
         except aiohttp.ClientError as e:
             # 流式传输错误，记录日志
             elapsed_ms = (time.time() - ctx.start_time) * 1000
-            self.log(f"{ctx.method} {ctx.path} -> {ctx.matched_route.upstream} [STREAMING ERROR] {elapsed_ms:.0f}ms - {str(e)}", "ERROR")
+            self.log(
+                f"{ctx.method} {ctx.path} -> {ctx.matched_route.upstream} [STREAMING ERROR] {elapsed_ms:.0f}ms - {str(e)}",
+                "ERROR",
+            )
 
         return response
 
     def _should_convert_responses(self, ctx: RequestContext) -> bool:
         """判断是否需要转换 Responses API"""
         return (
-            ctx.path == "/v1/responses" and
-            ctx.upstream is not None and
-            ctx.upstream.convert_responses
+            ctx.path == "/v1/responses"
+            and ctx.upstream is not None
+            and ctx.upstream.convert_responses
         )
 
     def _parse_responses_request(self, body: bytes) -> ResponsesRequest:
@@ -381,7 +395,7 @@ class ProxyServer:
             instructions=req_body.get("instructions"),
             previous_response_id=req_body.get("previous_response_id"),
             tools=req_body.get("tools"),
-            stream=req_body.get("stream", False)
+            stream=req_body.get("stream", False),
         )
 
     async def _handle_responses(self, ctx: RequestContext) -> web.Response:
@@ -401,7 +415,9 @@ class ProxyServer:
                 ctx, url, headers, chat_body, responses_req
             )
         else:
-            return await self._forward_responses(ctx, url, headers, chat_body, responses_req)
+            return await self._forward_responses(
+                ctx, url, headers, chat_body, responses_req
+            )
 
     async def _forward_responses(
         self,
@@ -409,7 +425,7 @@ class ProxyServer:
         url: str,
         headers: dict,
         chat_body: dict,
-        responses_req: ResponsesRequest
+        responses_req: ResponsesRequest,
     ) -> web.Response:
         """非流式：发送 Chat Completions，转换响应"""
         try:
@@ -421,9 +437,7 @@ class ProxyServer:
             if "x-api-key" in headers:
                 simple_headers["x-api-key"] = headers["x-api-key"]
             async with self.client_session.post(
-                url,
-                json=chat_body,
-                headers=simple_headers
+                url, json=chat_body, headers=simple_headers
             ) as resp:
                 resp_body = await resp.read()
                 if self._should_retry(resp.status, resp_body, ctx.attempt):
@@ -443,17 +457,20 @@ class ProxyServer:
                     elapsed_ms=elapsed_ms,
                     retries=ctx.attempt,
                     request_body=json.dumps(chat_body),
-                    response_body=json.dumps(responses_resp)
+                    response_body=json.dumps(responses_resp),
                 )
 
                 return web.Response(
                     status=resp.status if resp.status >= 400 else 200,
                     body=json.dumps(responses_resp),
-                    content_type="application/json"
+                    content_type="application/json",
                 )
         except aiohttp.ClientError as e:
             elapsed_ms = (time.time() - ctx.start_time) * 1000
-            self.log(f"{ctx.method} {ctx.path} -> [ERROR] {elapsed_ms:.0f}ms - {str(e)}", "ERROR")
+            self.log(
+                f"{ctx.method} {ctx.path} -> [ERROR] {elapsed_ms:.0f}ms - {str(e)}",
+                "ERROR",
+            )
 
             if ctx.attempt < self._get_max_retries():
                 return await self._retry_responses(ctx, responses_req)
@@ -465,7 +482,7 @@ class ProxyServer:
         url: str,
         headers: dict,
         chat_body: dict,
-        responses_req: ResponsesRequest
+        responses_req: ResponsesRequest,
     ) -> web.StreamResponse:
         """流式：转换 SSE 流"""
         response = web.StreamResponse(
@@ -474,7 +491,7 @@ class ProxyServer:
                 "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-            }
+            },
         )
         await response.prepare(ctx._request)
 
@@ -490,9 +507,7 @@ class ProxyServer:
             if "x-api-key" in headers:
                 simple_headers["x-api-key"] = headers["x-api-key"]
             async with self.client_session.post(
-                url,
-                json=chat_body,
-                headers=simple_headers
+                url, json=chat_body, headers=simple_headers
             ) as upstream_resp:
                 # 检查上游响应状态
                 if upstream_resp.status >= 400:
@@ -507,24 +522,23 @@ class ProxyServer:
                         elapsed_ms=elapsed_ms,
                         retries=ctx.attempt,
                         request_body=json.dumps(chat_body),
-                        response_body=error_body.decode('utf-8', errors='ignore')
+                        response_body=error_body.decode("utf-8", errors="ignore"),
                     )
                     return web.Response(
                         status=upstream_resp.status,
                         body=error_body,
-                        content_type="application/json"
+                        content_type="application/json",
                     )
 
                 async for chunk in self.responses_converter.convert_stream(
-                    upstream_resp.content,
-                    responses_req
+                    upstream_resp.content, responses_req
                 ):
                     response_chunks.append(chunk)
                     await response.write(chunk)
 
             elapsed_ms = (time.time() - ctx.start_time) * 1000
             # 记录详细的流式响应内容
-            resp_body = b"".join(response_chunks).decode('utf-8', errors='ignore')
+            resp_body = b"".join(response_chunks).decode("utf-8", errors="ignore")
             self.log_manager.log_request(
                 method=ctx.method,
                 path=ctx.path,
@@ -533,18 +547,19 @@ class ProxyServer:
                 elapsed_ms=elapsed_ms,
                 retries=ctx.attempt,
                 request_body=json.dumps(chat_body),
-                response_body=resp_body
+                response_body=resp_body,
             )
         except aiohttp.ClientError as e:
             elapsed_ms = (time.time() - ctx.start_time) * 1000
-            self.log(f"{ctx.method} {ctx.path} -> [STREAMING ERROR] {elapsed_ms:.0f}ms - {str(e)}", "ERROR")
+            self.log(
+                f"{ctx.method} {ctx.path} -> [STREAMING ERROR] {elapsed_ms:.0f}ms - {str(e)}",
+                "ERROR",
+            )
 
         return response
 
     async def _retry_responses(
-        self,
-        ctx: RequestContext,
-        responses_req: ResponsesRequest
+        self, ctx: RequestContext, responses_req: ResponsesRequest
     ) -> web.Response:
         """重试 Responses 请求"""
         delay = 1.0

@@ -1,5 +1,6 @@
 # tests/test_responses_converter.py
 """Responses API 转换器测试"""
+
 import pytest
 from src.session_manager import SessionManager
 from src.responses_converter import ResponsesConverter
@@ -27,11 +28,7 @@ class TestResponsesConverter:
 
     def test_convert_request_with_instructions(self, converter):
         """测试带系统指令的转换"""
-        req = ResponsesRequest(
-            model="gpt-4",
-            input="Hello",
-            instructions="Be helpful"
-        )
+        req = ResponsesRequest(model="gpt-4", input="Hello", instructions="Be helpful")
         result = converter.convert_request(req)
 
         assert len(result["messages"]) == 2
@@ -42,21 +39,25 @@ class TestResponsesConverter:
         """测试带历史消息的转换"""
         # 先创建一个会话
         response_id = converter.sessions.generate_response_id()
-        converter.sessions.save_session(response_id, [
-            {"role": "user", "content": "Previous question"},
-            {"role": "assistant", "content": "Previous answer"}
-        ])
+        converter.sessions.save_session(
+            response_id,
+            [
+                {"role": "user", "content": "Previous question"},
+                {"role": "assistant", "content": "Previous answer"},
+            ],
+        )
 
         req = ResponsesRequest(
-            model="gpt-4",
-            input="New question",
-            previous_response_id=response_id
+            model="gpt-4", input="New question", previous_response_id=response_id
         )
         result = converter.convert_request(req)
 
         assert len(result["messages"]) == 3
         assert result["messages"][0] == {"role": "user", "content": "Previous question"}
-        assert result["messages"][1] == {"role": "assistant", "content": "Previous answer"}
+        assert result["messages"][1] == {
+            "role": "assistant",
+            "content": "Previous answer",
+        }
         assert result["messages"][2] == {"role": "user", "content": "New question"}
 
     def test_convert_request_with_tools(self, converter):
@@ -64,12 +65,14 @@ class TestResponsesConverter:
         req = ResponsesRequest(
             model="gpt-4",
             input="Hello",
-            tools=[{
-                "type": "function",
-                "name": "get_weather",
-                "description": "Get weather",
-                "parameters": {"type": "object"}
-            }]
+            tools=[
+                {
+                    "type": "function",
+                    "name": "get_weather",
+                    "description": "Get weather",
+                    "parameters": {"type": "object"},
+                }
+            ],
         )
         result = converter.convert_request(req)
 
@@ -92,8 +95,8 @@ class TestResponsesConverter:
             input=[
                 {"type": "message", "role": "user", "content": "Hi"},
                 {"type": "message", "role": "assistant", "content": "Hello!"},
-                {"type": "message", "role": "user", "content": "How are you?"}
-            ]
+                {"type": "message", "role": "user", "content": "How are you?"},
+            ],
         )
         result = converter.convert_request(req)
 
@@ -109,9 +112,7 @@ class TestResponsesConverter:
         req = ResponsesRequest(model="gpt-4", input="Hello")
         chat_resp = {
             "model": "gpt-4",
-            "choices": [{
-                "message": {"role": "assistant", "content": "Hi there!"}
-            }]
+            "choices": [{"message": {"role": "assistant", "content": "Hi there!"}}],
         }
 
         result = converter.convert_response(chat_resp, req)
@@ -130,11 +131,7 @@ class TestResponsesConverter:
     def test_convert_response_saves_session(self, converter):
         """测试响应转换保存会话"""
         req = ResponsesRequest(model="gpt-4", input="Hello")
-        chat_resp = {
-            "choices": [{
-                "message": {"role": "assistant", "content": "Hi!"}
-            }]
-        }
+        chat_resp = {"choices": [{"message": {"role": "assistant", "content": "Hi!"}}]}
 
         result = converter.convert_response(chat_resp, req)
 

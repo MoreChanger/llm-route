@@ -1,4 +1,5 @@
 """单实例锁模块"""
+
 import os
 import sys
 from pathlib import Path
@@ -20,7 +21,7 @@ class SingleInstanceLock:
     def _get_lock_path(self) -> Path:
         """获取锁文件路径 - 放在程序目录"""
         # 优先使用可执行文件同目录
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             base_dir = Path(sys.executable).parent
         else:
             base_dir = Path(__file__).parent.parent
@@ -31,6 +32,7 @@ class SingleInstanceLock:
         """检查指定 PID 的进程是否还在运行"""
         if sys.platform == "win32":
             import ctypes
+
             # 使用 Windows API 检查进程是否存在
             kernel32 = ctypes.windll.kernel32
             PROCESS_QUERY_LIMITED_INFORMATION = 0x1000

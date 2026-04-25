@@ -1,8 +1,12 @@
 # tests/test_responses_models.py
 """Responses API 数据模型测试"""
+
 from src.responses_models import (
-    ResponseInput, ResponsesRequest, ResponseContent,
-    ResponsesOutput, ResponsesResponse
+    ResponseInput,
+    ResponsesRequest,
+    ResponseContent,
+    ResponsesOutput,
+    ResponsesResponse,
 )
 
 
@@ -40,7 +44,7 @@ class TestResponsesRequest:
             instructions="Be helpful",
             previous_response_id="resp_abc123",
             tools=[{"type": "function", "name": "test"}],
-            stream=True
+            stream=True,
         )
         assert req.model == "gpt-4"
         assert req.instructions == "Be helpful"
@@ -82,7 +86,7 @@ class TestResponsesResponse:
             id="resp_abc",
             model="gpt-4",
             output=output,
-            previous_response_id="resp_prev"
+            previous_response_id="resp_prev",
         )
         assert resp.id == "resp_abc"
         assert resp.model == "gpt-4"

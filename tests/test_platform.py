@@ -1,4 +1,5 @@
 """platform.py 模块测试"""
+
 import os
 import sys
 import pytest
@@ -101,6 +102,7 @@ class TestHasClipboard:
             # 重新导入模块以使用 mock
             importlib.reload(sys.modules["src.platform"])
             from src.platform import has_clipboard
+
             assert has_clipboard() is True
 
         # 恢复原始模块
@@ -117,6 +119,7 @@ class TestHasClipboard:
         with patch.dict(sys.modules, {"pyperclip": mock_pyperclip}):
             importlib.reload(sys.modules["src.platform"])
             from src.platform import has_clipboard
+
             assert has_clipboard() is False
 
         importlib.reload(sys.modules["src.platform"])
@@ -129,6 +132,7 @@ class TestHasClipboard:
         with patch.dict(sys.modules, {"pyperclip": None}):
             importlib.reload(sys.modules["src.platform"])
             from src.platform import has_clipboard
+
             assert has_clipboard() is False
 
         importlib.reload(sys.modules["src.platform"])
@@ -154,13 +158,17 @@ class TestHasAppIndicator:
         mock_appindicator = MagicMock()
 
         with patch("sys.platform", "linux"):
-            with patch.dict(sys.modules, {
-                "gi": mock_gi,
-                "gi.repository": MagicMock(),
-                "gi.repository.AppIndicator3": mock_appindicator
-            }):
+            with patch.dict(
+                sys.modules,
+                {
+                    "gi": mock_gi,
+                    "gi.repository": MagicMock(),
+                    "gi.repository.AppIndicator3": mock_appindicator,
+                },
+            ):
                 importlib.reload(sys.modules["src.platform"])
                 from src.platform import has_appindicator
+
                 assert has_appindicator() is True
 
         importlib.reload(sys.modules["src.platform"])
@@ -214,7 +222,13 @@ class TestGetPlatformInfo:
     def test_contains_required_keys(self):
         """测试包含必要的键"""
         info = get_platform_info()
-        required_keys = ["platform", "is_docker", "has_display", "has_clipboard", "level"]
+        required_keys = [
+            "platform",
+            "is_docker",
+            "has_display",
+            "has_clipboard",
+            "level",
+        ]
         for key in required_keys:
             assert key in info
 

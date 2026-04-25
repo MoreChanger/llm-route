@@ -1,4 +1,5 @@
 """系统托盘模块"""
+
 import threading
 from typing import Callable, Optional
 
@@ -22,7 +23,7 @@ class TrayManager:
         on_toggle_service: Callable[[], None],
         on_preset_change: Callable[[str], None],
         on_log_level_change: Callable[[int], None],
-        config_path: str
+        config_path: str,
     ):
         """
         Args:
@@ -64,18 +65,18 @@ class TrayManager:
 
         if is_running:
             # 绿色 - 服务运行中
-            fill_color = (76, 175, 80, 255)    # 绿色
-            outline_color = (56, 142, 60, 255) # 深绿边框
+            fill_color = (76, 175, 80, 255)  # 绿色
+            outline_color = (56, 142, 60, 255)  # 深绿边框
         else:
             # 红色 - 服务已停止
-            fill_color = (244, 67, 54, 255)    # 红色
-            outline_color = (198, 40, 40, 255) # 深红边框
+            fill_color = (244, 67, 54, 255)  # 红色
+            outline_color = (198, 40, 40, 255)  # 深红边框
 
         draw.ellipse(
             [margin, margin, width - margin, height - margin],
             fill=fill_color,
             outline=outline_color,
-            width=2
+            width=2,
         )
 
         return image
@@ -95,62 +96,42 @@ class TrayManager:
         log_level_items = self._create_log_level_menu_items()
 
         menu_items = [
-            pystray.MenuItem(
-                self._get_status_text,
-                lambda icon: None
-            ),
+            pystray.MenuItem(self._get_status_text, lambda icon: None),
             pystray.Menu.SEPARATOR,
         ]
 
         # Level 1 (完整功能): 所有功能可用
         if self._platform_level == 1:
-            menu_items.extend([
-                pystray.MenuItem(
-                    "复制代理地址",
-                    self._copy_address
-                ),
-            ])
+            menu_items.extend(
+                [
+                    pystray.MenuItem("复制代理地址", self._copy_address),
+                ]
+            )
 
-        menu_items.extend([
-            pystray.MenuItem(
-                "日志详情",
-                self._show_logs
-            ),
-            pystray.MenuItem(
-                "日志等级",
-                pystray.Menu(*log_level_items)
-            ),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                self._get_service_text,
-                self._toggle_service
-            ),
-            pystray.MenuItem(
-                "更换端口...",
-                self._change_port
-            ),
-            pystray.MenuItem(
-                "加载预设",
-                pystray.Menu(*preset_items) if preset_items else None
-            ),
-        ])
+        menu_items.extend(
+            [
+                pystray.MenuItem("日志详情", self._show_logs),
+                pystray.MenuItem("日志等级", pystray.Menu(*log_level_items)),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem(self._get_service_text, self._toggle_service),
+                pystray.MenuItem("更换端口...", self._change_port),
+                pystray.MenuItem(
+                    "加载预设", pystray.Menu(*preset_items) if preset_items else None
+                ),
+            ]
+        )
 
         # 开机自启选项仅在支持的平台显示
         if self._autostart_manager.is_supported():
-            menu_items.extend([
-                pystray.MenuItem(
-                    self._get_autostart_text,
-                    self._toggle_auto_start
-                ),
-            ])
-
-        menu_items.extend([
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                "退出",
-                self._quit
+            menu_items.extend(
+                [
+                    pystray.MenuItem(self._get_autostart_text, self._toggle_auto_start),
+                ]
             )
-        ])
+
+        menu_items.extend(
+            [pystray.Menu.SEPARATOR, pystray.MenuItem("退出", self._quit)]
+        )
 
         return pystray.Menu(*menu_items)
 
@@ -164,16 +145,16 @@ class TrayManager:
         for name, preset_path in presets:
             # 显示名称，当前预设带勾
             display_name = name + (" ✓" if name == self._current_preset else "")
+
             # 创建一个闭包来捕获参数
             def make_callback(n, p):
                 def callback(icon, item):
                     self._load_preset(n, p)
+
                 return callback
+
             items.append(
-                pystray.MenuItem(
-                    display_name,
-                    make_callback(name, preset_path)
-                )
+                pystray.MenuItem(display_name, make_callback(name, preset_path))
             )
 
         if not items:
@@ -183,27 +164,21 @@ class TrayManager:
 
     def _create_log_level_menu_items(self) -> list:
         """创建日志等级菜单项"""
-        levels = [
-            (1, "基础信息"),
-            (2, "详细信息"),
-            (3, "完整信息")
-        ]
+        levels = [(1, "基础信息"), (2, "详细信息"), (3, "完整信息")]
 
         items = []
         current_level = self.log_manager.get_level()
 
         for level, name in levels:
             display_name = name + (" ✓" if level == current_level else "")
+
             def make_callback(lvl):
                 def callback(icon, item):
                     self._set_log_level(lvl)
+
                 return callback
-            items.append(
-                pystray.MenuItem(
-                    display_name,
-                    make_callback(level)
-                )
-            )
+
+            items.append(pystray.MenuItem(display_name, make_callback(level)))
 
         return items
 
@@ -227,13 +202,16 @@ class TrayManager:
 
             for name, preset_path in presets:
                 with open(preset_path, "r", encoding="utf-8") as f:
-                    preset_data = __import__('yaml').safe_load(f) or {}
+                    preset_data = __import__("yaml").safe_load(f) or {}
 
                 # 比较 upstreams 和 routes
-                if (preset_data.get("upstreams") == {k: {"url": v.url, "protocol": v.protocol}
-                                                      for k, v in current_config.upstreams.items()}
-                    and preset_data.get("routes") == [{"path": r.path, "upstream": r.upstream}
-                                                      for r in current_config.routes]):
+                if preset_data.get("upstreams") == {
+                    k: {"url": v.url, "protocol": v.protocol}
+                    for k, v in current_config.upstreams.items()
+                } and preset_data.get("routes") == [
+                    {"path": r.path, "upstream": r.upstream}
+                    for r in current_config.routes
+                ]:
                     return name
         except Exception:
             pass
@@ -277,12 +255,14 @@ class TrayManager:
         # 使用 pyperclip 复制到剪贴板
         try:
             import pyperclip
+
             pyperclip.copy(address)
         except Exception:
             pass  # 剪贴板不可用时静默失败
 
     def _show_logs(self):
         """显示日志窗口"""
+
         def show():
             show_log_window(self.proxy_server.get_logs_page)
 
@@ -296,6 +276,7 @@ class TrayManager:
         # 延迟更新菜单，等待服务状态改变
         if self.tray:
             import threading
+
             # 延迟 500ms 后更新，给服务足够时间启动/停止
             threading.Timer(0.5, self._update_menu).start()
 
@@ -315,7 +296,7 @@ class TrayManager:
             root.resizable(False, False)
 
             # 确保窗口在最前面
-            root.attributes('-topmost', True)
+            root.attributes("-topmost", True)
             root.focus_force()
 
             current_port = self.proxy_server.config.port
@@ -337,12 +318,18 @@ class TrayManager:
                     else:
                         port = int(port_str)
                         if not (1 <= port <= 65535):
-                            messagebox.showerror("错误", "端口必须在 1-65535 之间", parent=root)
+                            messagebox.showerror(
+                                "错误", "端口必须在 1-65535 之间", parent=root
+                            )
                             return
 
                         # 检测端口是否可用
                         if not is_port_available(self.proxy_server.config.host, port):
-                            messagebox.showerror("错误", f"端口 {port} 已被占用，请选择其他端口", parent=root)
+                            messagebox.showerror(
+                                "错误",
+                                f"端口 {port} 已被占用，请选择其他端口",
+                                parent=root,
+                            )
                             return
 
                         result["port"] = port
@@ -358,14 +345,20 @@ class TrayManager:
                 root.destroy()
 
             # 绑定回车键
-            entry.bind('<Return>', on_ok)
+            entry.bind("<Return>", on_ok)
 
             btn_frame = tk.Frame(root)
             btn_frame.pack(pady=15)
 
-            tk.Button(btn_frame, text="确定", command=on_ok, width=8).pack(side=tk.LEFT, padx=5)
-            tk.Button(btn_frame, text="自动分配", command=on_auto, width=8).pack(side=tk.LEFT, padx=5)
-            tk.Button(btn_frame, text="取消", command=on_cancel, width=8).pack(side=tk.LEFT, padx=5)
+            tk.Button(btn_frame, text="确定", command=on_ok, width=8).pack(
+                side=tk.LEFT, padx=5
+            )
+            tk.Button(btn_frame, text="自动分配", command=on_auto, width=8).pack(
+                side=tk.LEFT, padx=5
+            )
+            tk.Button(btn_frame, text="取消", command=on_cancel, width=8).pack(
+                side=tk.LEFT, padx=5
+            )
 
             # 运行主循环
             root.mainloop()
@@ -413,12 +406,7 @@ class TrayManager:
         icon = self._create_icon(is_running)
         menu = self._create_menu()
 
-        self.tray = pystray.Icon(
-            "llm-route",
-            icon,
-            "LLM-ROUTE",
-            menu
-        )
+        self.tray = pystray.Icon("llm-route", icon, "LLM-ROUTE", menu)
 
         self.tray.run()
 

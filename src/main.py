@@ -1,4 +1,5 @@
 """LLM-ROUTE 入口模块"""
+
 import argparse
 import asyncio
 import signal
@@ -24,28 +25,24 @@ def safe_print(message: str):
 
 def parse_args():
     """解析命令行参数"""
-    parser = argparse.ArgumentParser(
-        description="LLM-ROUTE: 轻量级 LLM API 路由工具"
-    )
+    parser = argparse.ArgumentParser(description="LLM-ROUTE: 轻量级 LLM API 路由工具")
 
     parser.add_argument(
-        "--headless",
-        action="store_true",
-        help="无头模式运行（不显示托盘）"
+        "--headless", action="store_true", help="无头模式运行（不显示托盘）"
     )
 
     parser.add_argument(
         "--config",
         type=str,
         default=None,
-        help="配置文件路径（默认：当前目录下的 config.yaml）"
+        help="配置文件路径（默认：当前目录下的 config.yaml）",
     )
 
     parser.add_argument(
         "--port",
         type=str,
         default=None,
-        help="监听端口（覆盖配置文件，可指定数字或 'auto'）"
+        help="监听端口（覆盖配置文件，可指定数字或 'auto'）",
     )
 
     return parser.parse_args()
@@ -76,7 +73,9 @@ def get_config_path(args) -> str:
     return str(local_config)
 
 
-async def run_headless(server: ProxyServer, log_manager: LogManager, shutdown_event: asyncio.Event):
+async def run_headless(
+    server: ProxyServer, log_manager: LogManager, shutdown_event: asyncio.Event
+):
     """无头模式运行
 
     仅启动服务，无托盘界面。
@@ -111,9 +110,12 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
 
     def on_port_change(new_port):
         """端口变更回调"""
+
         async def change():
             # 先检测端口是否可用
-            if new_port != "auto" and not is_port_available(server.config.host, new_port):
+            if new_port != "auto" and not is_port_available(
+                server.config.host, new_port
+            ):
                 # 端口被占用，不进行切换，通过日志提示
                 server.log(f"端口 {new_port} 已被占用，请选择其他端口", "ERROR")
                 return
@@ -129,6 +131,7 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
 
     def on_toggle_service():
         """切换服务状态回调"""
+
         async def toggle():
             if server.runner is not None:
                 await server.stop()
@@ -139,6 +142,7 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
 
     def on_preset_change(preset_name: str):
         """预设变更回调"""
+
         async def reload():
             # 重新加载配置
             new_config = load_config(config_path)
@@ -161,9 +165,19 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
         server.log(f"日志等级已切换为: {log_manager.get_level_name()}")
 
     # 在单独线程中运行托盘
-    tray = TrayManager(server, log_manager, on_exit, on_port_change, on_toggle_service, on_preset_change, on_log_level_change, config_path)
+    tray = TrayManager(
+        server,
+        log_manager,
+        on_exit,
+        on_port_change,
+        on_toggle_service,
+        on_preset_change,
+        on_log_level_change,
+        config_path,
+    )
 
     import threading
+
     tray_thread = threading.Thread(target=tray.run, daemon=True)
     tray_thread.start()
 
@@ -260,9 +274,10 @@ def main():
             asyncio.run(run_with_tray(server, log_manager, config_path))
     except Exception:
         import traceback
+
         # 写入错误到文件
         error_file = Path(__file__).parent.parent / "error.log"
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             error_file = Path(sys.executable).parent / "error.log"
         try:
             with open(error_file, "w", encoding="utf-8") as f:

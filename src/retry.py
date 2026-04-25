@@ -1,4 +1,5 @@
 """重试策略模块"""
+
 from dataclasses import dataclass
 from typing import Optional
 
@@ -6,6 +7,7 @@ from typing import Optional
 @dataclass
 class RetryRule:
     """重试规则"""
+
     status: int
     max_retries: int = 10
     delay: float = 2.0

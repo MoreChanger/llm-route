@@ -1,4 +1,5 @@
 """代理服务模块测试"""
+
 import json
 
 import pytest
@@ -53,7 +54,9 @@ class TestProxyServer:
             host="127.0.0.1",
             port=18087,
             upstreams={
-                "anthropic": Upstream(url="https://api.anthropic.com", protocol="anthropic"),
+                "anthropic": Upstream(
+                    url="https://api.anthropic.com", protocol="anthropic"
+                ),
                 "openai": Upstream(url="https://api.openai.com", protocol="openai"),
             },
             routes=[
@@ -62,7 +65,7 @@ class TestProxyServer:
             ],
             retry_rules=[
                 RetryRule(status=429, max_retries=2, delay=0.1, jitter=0.05),
-            ]
+            ],
         )
 
     @pytest.fixture
@@ -91,6 +94,7 @@ class TestProxyServer:
 
         # 验证服务器正在运行
         import aiohttp
+
         async with aiohttp.ClientSession() as session:
             # 发送一个请求，应该返回 404（没有匹配的路由）
             async with session.get("http://127.0.0.1:18087/unknown") as resp:
@@ -107,6 +111,7 @@ class TestProxyServer:
         await server.start()
 
         import aiohttp
+
         async with aiohttp.ClientSession() as session:
             async with session.get("http://127.0.0.1:18087/unknown/path") as resp:
                 assert resp.status == 404
@@ -122,12 +127,13 @@ class TestProxyServer:
 
         # 测试流式请求路径存在
         import aiohttp
+
         async with aiohttp.ClientSession() as session:
             # 发送请求到已知路由
             async with session.post(
                 "http://127.0.0.1:18087/v1/messages",
                 json={"test": "data"},
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
             ) as resp:
                 # 由于没有真实上游，会返回 502 或其他错误
                 # 这里只验证请求被正确路由
@@ -149,7 +155,7 @@ class TestProxyServer:
         assert server._is_streaming_request({}, body) is True
 
         # 非流式请求
-        assert server._is_streaming_request({}, b'{}') is False
+        assert server._is_streaming_request({}, b"{}") is False
 
         log_manager.stop()
 
@@ -168,19 +174,19 @@ class TestProxyResponsesHandling:
                 "ollama": Upstream(
                     url="http://localhost:11434/v1",
                     protocol="openai",
-                    convert_responses=True
+                    convert_responses=True,
                 ),
                 "openai": Upstream(
                     url="https://api.openai.com",
                     protocol="openai",
-                    convert_responses=False
+                    convert_responses=False,
                 ),
             },
             routes=[
                 Route(path="/v1/responses", upstream="ollama"),
                 Route(path="/v1/chat/completions", upstream="openai"),
             ],
-            retry_rules=[]
+            retry_rules=[],
         )
 
     @pytest.fixture
@@ -198,14 +204,16 @@ class TestProxyResponsesHandling:
             method="POST",
             path="/v1/responses",
             headers={},
-            body=b'{}',
-            upstream=config_with_convert.upstreams["ollama"]
+            body=b"{}",
+            upstream=config_with_convert.upstreams["ollama"],
         )
 
         assert server._should_convert_responses(ctx) is True
         log_manager.stop()
 
-    def test_should_convert_responses_false_path(self, config_with_convert, log_manager):
+    def test_should_convert_responses_false_path(
+        self, config_with_convert, log_manager
+    ):
         """测试路径不匹配"""
         server = ProxyServer(config_with_convert, log_manager)
 
@@ -213,14 +221,16 @@ class TestProxyResponsesHandling:
             method="POST",
             path="/v1/chat/completions",
             headers={},
-            body=b'{}',
-            upstream=config_with_convert.upstreams["ollama"]
+            body=b"{}",
+            upstream=config_with_convert.upstreams["ollama"],
         )
 
         assert server._should_convert_responses(ctx) is False
         log_manager.stop()
 
-    def test_should_convert_responses_false_flag(self, config_with_convert, log_manager):
+    def test_should_convert_responses_false_flag(
+        self, config_with_convert, log_manager
+    ):
         """测试标志为 False"""
         server = ProxyServer(config_with_convert, log_manager)
 
@@ -228,8 +238,8 @@ class TestProxyResponsesHandling:
             method="POST",
             path="/v1/responses",
             headers={},
-            body=b'{}',
-            upstream=config_with_convert.upstreams["openai"]
+            body=b"{}",
+            upstream=config_with_convert.upstreams["openai"],
         )
 
         assert server._should_convert_responses(ctx) is False
@@ -239,12 +249,14 @@ class TestProxyResponsesHandling:
         """测试解析 Responses 请求"""
         server = ProxyServer(config_with_convert, log_manager)
 
-        body = json.dumps({
-            "model": "gpt-4",
-            "input": "Hello",
-            "instructions": "Be helpful",
-            "stream": True
-        }).encode()
+        body = json.dumps(
+            {
+                "model": "gpt-4",
+                "input": "Hello",
+                "instructions": "Be helpful",
+                "stream": True,
+            }
+        ).encode()
 
         req = server._parse_responses_request(body)
 

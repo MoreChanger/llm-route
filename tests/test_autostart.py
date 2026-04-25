@@ -1,4 +1,5 @@
 """autostart.py 模块测试"""
+
 import os
 import sys
 import subprocess
@@ -70,7 +71,9 @@ class TestAutoStartManager:
         """测试 enable 委托给实现"""
         with patch("sys.platform", "win32"):
             manager = AutoStartManager()
-            with patch.object(manager._impl, "enable", return_value=True) as mock_enable:
+            with patch.object(
+                manager._impl, "enable", return_value=True
+            ) as mock_enable:
                 result = manager.enable()
                 mock_enable.assert_called_once()
                 assert result is True
@@ -79,7 +82,9 @@ class TestAutoStartManager:
         """测试 disable 委托给实现"""
         with patch("sys.platform", "win32"):
             manager = AutoStartManager()
-            with patch.object(manager._impl, "disable", return_value=True) as mock_disable:
+            with patch.object(
+                manager._impl, "disable", return_value=True
+            ) as mock_disable:
                 result = manager.disable()
                 mock_disable.assert_called_once()
                 assert result is True
@@ -88,7 +93,9 @@ class TestAutoStartManager:
         """测试 is_enabled 委托给实现"""
         with patch("sys.platform", "win32"):
             manager = AutoStartManager()
-            with patch.object(manager._impl, "is_enabled", return_value=False) as mock_is_enabled:
+            with patch.object(
+                manager._impl, "is_enabled", return_value=False
+            ) as mock_is_enabled:
                 result = manager.is_enabled()
                 mock_is_enabled.assert_called_once()
                 assert result is False
@@ -206,7 +213,11 @@ class TestLinuxAutoStart:
         """测试 desktop 文件路径"""
         impl = _LinuxAutoStart("TestApp")
 
-        with patch.object(impl, "_get_autostart_dir", return_value=Path("/home/user/.config/autostart")):
+        with patch.object(
+            impl,
+            "_get_autostart_dir",
+            return_value=Path("/home/user/.config/autostart"),
+        ):
             file_path = impl._get_desktop_file()
             assert file_path == Path("/home/user/.config/autostart/testapp.desktop")
 
@@ -216,7 +227,9 @@ class TestLinuxAutoStart:
 
         autostart_dir = tmp_path / "autostart"
         with patch.object(impl, "_get_autostart_dir", return_value=autostart_dir):
-            with patch.object(impl, "_get_executable_path", return_value="/usr/bin/testapp"):
+            with patch.object(
+                impl, "_get_executable_path", return_value="/usr/bin/testapp"
+            ):
                 with patch.object(sys, "frozen", False, create=True):
                     result = impl.enable()
                     assert result is True
@@ -231,7 +244,9 @@ class TestLinuxAutoStart:
         icon_path.touch()
 
         with patch.object(impl, "_get_autostart_dir", return_value=autostart_dir):
-            with patch.object(impl, "_get_executable_path", return_value="/usr/bin/testapp"):
+            with patch.object(
+                impl, "_get_executable_path", return_value="/usr/bin/testapp"
+            ):
                 # 模拟 frozen 属性
                 with patch.dict("sys.__dict__", {"frozen": True}):
                     with patch("sys.executable", str(tmp_path / "app")):
@@ -256,7 +271,9 @@ class TestLinuxAutoStart:
         """测试禁用时文件不存在"""
         impl = _LinuxAutoStart("TestApp")
 
-        with patch.object(impl, "_get_desktop_file", return_value=tmp_path / "nonexistent.desktop"):
+        with patch.object(
+            impl, "_get_desktop_file", return_value=tmp_path / "nonexistent.desktop"
+        ):
             result = impl.disable()
             assert result is True
 
@@ -275,7 +292,9 @@ class TestLinuxAutoStart:
         """测试未启用"""
         impl = _LinuxAutoStart("TestApp")
 
-        with patch.object(impl, "_get_desktop_file", return_value=tmp_path / "nonexistent.desktop"):
+        with patch.object(
+            impl, "_get_desktop_file", return_value=tmp_path / "nonexistent.desktop"
+        ):
             result = impl.is_enabled()
             assert result is False
 
@@ -295,9 +314,15 @@ class TestMacOSAutoStart:
         """测试 plist 文件路径"""
         impl = _MacOSAutoStart("TestApp")
 
-        with patch.object(impl, "_get_launchagents_dir", return_value=Path("/Users/user/Library/LaunchAgents")):
+        with patch.object(
+            impl,
+            "_get_launchagents_dir",
+            return_value=Path("/Users/user/Library/LaunchAgents"),
+        ):
             file_path = impl._get_plist_file()
-            assert file_path == Path("/Users/user/Library/LaunchAgents/com.user.testapp.plist")
+            assert file_path == Path(
+                "/Users/user/Library/LaunchAgents/com.user.testapp.plist"
+            )
 
     def test_get_label(self):
         """测试 LaunchAgent 标签"""
@@ -311,7 +336,11 @@ class TestMacOSAutoStart:
 
         launchagents_dir = tmp_path / "LaunchAgents"
         with patch.object(impl, "_get_launchagents_dir", return_value=launchagents_dir):
-            with patch.object(impl, "_get_executable_path", return_value="/Applications/TestApp.app/Contents/MacOS/TestApp"):
+            with patch.object(
+                impl,
+                "_get_executable_path",
+                return_value="/Applications/TestApp.app/Contents/MacOS/TestApp",
+            ):
                 result = impl.enable()
                 assert result is True
                 assert impl._get_plist_file().exists()
@@ -364,7 +393,9 @@ class TestMacOSAutoStart:
         plist_file.touch()
 
         with patch.object(impl, "_get_plist_file", return_value=plist_file):
-            with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("launchctl", 5)):
+            with patch(
+                "subprocess.run", side_effect=subprocess.TimeoutExpired("launchctl", 5)
+            ):
                 result = impl.disable()
                 assert result is True
                 assert not plist_file.exists()
@@ -384,7 +415,9 @@ class TestMacOSAutoStart:
         """测试未启用"""
         impl = _MacOSAutoStart("TestApp")
 
-        with patch.object(impl, "_get_plist_file", return_value=tmp_path / "nonexistent.plist"):
+        with patch.object(
+            impl, "_get_plist_file", return_value=tmp_path / "nonexistent.plist"
+        ):
             result = impl.is_enabled()
             assert result is False
 

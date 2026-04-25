@@ -1,4 +1,5 @@
 """日志弹窗模块"""
+
 import tkinter as tk
 from tkinter import scrolledtext, messagebox, ttk
 from typing import Callable, Optional
@@ -7,7 +8,9 @@ from typing import Callable, Optional
 class LogWindow:
     """日志弹窗窗口 - 文件驱动"""
 
-    def __init__(self, get_logs_page: Callable[[int, int], tuple], title: str = "LLM-ROUTE 日志"):
+    def __init__(
+        self, get_logs_page: Callable[[int, int], tuple], title: str = "LLM-ROUTE 日志"
+    ):
         """
         Args:
             get_logs_page: 获取分页日志的回调函数，返回 (logs, total_pages, total_count)
@@ -44,14 +47,14 @@ class LogWindow:
             font=("Consolas", 10),
             bg="#1e1e1e",
             fg="#d4d4d4",
-            insertbackground="white"
+            insertbackground="white",
         )
         self.text_widget.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         # 监听滚动事件
-        self.text_widget.bind('<MouseWheel>', self._on_user_scroll)
-        self.text_widget.bind('<Button-4>', self._on_user_scroll)  # Linux
-        self.text_widget.bind('<Button-5>', self._on_user_scroll)  # Linux
+        self.text_widget.bind("<MouseWheel>", self._on_user_scroll)
+        self.text_widget.bind("<Button-4>", self._on_user_scroll)  # Linux
+        self.text_widget.bind("<Button-5>", self._on_user_scroll)  # Linux
 
         # 分页框架
         page_frame = tk.Frame(self.window)
@@ -59,10 +62,7 @@ class LogWindow:
 
         # 上一页按钮
         self._prev_btn = tk.Button(
-            page_frame,
-            text="上一页",
-            command=self._prev_page,
-            width=8
+            page_frame, text="上一页", command=self._prev_page, width=8
         )
         self._prev_btn.pack(side=tk.LEFT, padx=5)
 
@@ -72,10 +72,7 @@ class LogWindow:
 
         # 下一页按钮
         self._next_btn = tk.Button(
-            page_frame,
-            text="下一页",
-            command=self._next_page,
-            width=8
+            page_frame, text="下一页", command=self._next_page, width=8
         )
         self._next_btn.pack(side=tk.LEFT, padx=5)
 
@@ -83,8 +80,10 @@ class LogWindow:
         tk.Label(page_frame, text="跳转到:").pack(side=tk.LEFT, padx=(15, 5))
         self._page_entry = tk.Entry(page_frame, width=6)
         self._page_entry.pack(side=tk.LEFT, padx=5)
-        self._page_entry.bind('<Return>', self._goto_page)
-        tk.Button(page_frame, text="跳转", command=self._goto_page, width=6).pack(side=tk.LEFT, padx=5)
+        self._page_entry.bind("<Return>", self._goto_page)
+        tk.Button(page_frame, text="跳转", command=self._goto_page, width=6).pack(
+            side=tk.LEFT, padx=5
+        )
 
         # 每页行数选择
         tk.Label(page_frame, text="每页行数:").pack(side=tk.LEFT, padx=(15, 5))
@@ -94,37 +93,27 @@ class LogWindow:
             textvariable=self._page_size_var,
             values=["50", "100", "200", "500", "1000"],
             width=8,
-            state="readonly"
+            state="readonly",
         )
         page_size_combo.pack(side=tk.LEFT, padx=5)
-        page_size_combo.bind('<<ComboboxSelected>>', self._on_page_size_change)
+        page_size_combo.bind("<<ComboboxSelected>>", self._on_page_size_change)
 
         # 按钮框架
         button_frame = tk.Frame(self.window)
         button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
 
         # 刷新按钮
-        refresh_btn = tk.Button(
-            button_frame,
-            text="刷新",
-            command=self._refresh
-        )
+        refresh_btn = tk.Button(button_frame, text="刷新", command=self._refresh)
         refresh_btn.pack(side=tk.LEFT, padx=5)
 
         # 滚动到底部按钮
         scroll_btn = tk.Button(
-            button_frame,
-            text="滚动到底部",
-            command=self._scroll_to_bottom
+            button_frame, text="滚动到底部", command=self._scroll_to_bottom
         )
         scroll_btn.pack(side=tk.LEFT, padx=5)
 
         # 复制当前页按钮
-        copy_btn = tk.Button(
-            button_frame,
-            text="复制当前页",
-            command=self._copy_page
-        )
+        copy_btn = tk.Button(button_frame, text="复制当前页", command=self._copy_page)
         copy_btn.pack(side=tk.LEFT, padx=5)
 
         # 关闭窗口时的处理
@@ -163,7 +152,7 @@ class LogWindow:
         if self.text_widget is None:
             return
         yview = self.text_widget.yview()
-        self._auto_scroll = (yview[1] >= 0.98)
+        self._auto_scroll = yview[1] >= 0.98
 
     def _scroll_to_bottom(self):
         """滚动到底部"""
@@ -191,7 +180,9 @@ class LogWindow:
         if self.text_widget is None:
             return
 
-        logs, total_pages, total_count = self.get_logs_page(self._current_page, self._page_size)
+        logs, total_pages, total_count = self.get_logs_page(
+            self._current_page, self._page_size
+        )
         self._total_pages = total_pages
         self._total_count = total_count
 
@@ -199,7 +190,7 @@ class LogWindow:
         new_line_count = len(logs)
         if new_line_count > self._last_line_count:
             # 只追加新增的日志
-            new_logs = logs[self._last_line_count:]
+            new_logs = logs[self._last_line_count :]
             if new_logs:
                 self.text_widget.config(state=tk.NORMAL)
                 for log in new_logs:
@@ -213,11 +204,17 @@ class LogWindow:
             self._last_line_count = new_line_count
 
         # 更新页码显示
-        self._page_label.config(text=f"第 {self._current_page} 页 / 共 {total_pages} 页 (共 {total_count} 条)")
+        self._page_label.config(
+            text=f"第 {self._current_page} 页 / 共 {total_pages} 页 (共 {total_count} 条)"
+        )
 
         # 更新按钮状态
-        self._prev_btn.config(state=tk.NORMAL if self._current_page > 1 else tk.DISABLED)
-        self._next_btn.config(state=tk.NORMAL if self._current_page < total_pages else tk.DISABLED)
+        self._prev_btn.config(
+            state=tk.NORMAL if self._current_page > 1 else tk.DISABLED
+        )
+        self._next_btn.config(
+            state=tk.NORMAL if self._current_page < total_pages else tk.DISABLED
+        )
 
     def _load_page(self, page: int, initial: bool = False):
         """加载指定页"""
@@ -242,7 +239,9 @@ class LogWindow:
             self._auto_scroll = True
 
         # 更新页码显示
-        self._page_label.config(text=f"第 {page} 页 / 共 {total_pages} 页 (共 {total_count} 条)")
+        self._page_label.config(
+            text=f"第 {page} 页 / 共 {total_pages} 页 (共 {total_count} 条)"
+        )
 
         # 更新按钮状态
         self._prev_btn.config(state=tk.NORMAL if page > 1 else tk.DISABLED)
@@ -264,7 +263,7 @@ class LogWindow:
         try:
             page = int(self._page_entry.get().strip())
             if 1 <= page <= self._total_pages:
-                self._auto_scroll = (page == self._total_pages)
+                self._auto_scroll = page == self._total_pages
                 self._load_page(page)
                 self._page_entry.delete(0, tk.END)
             else:
@@ -299,7 +298,9 @@ class LogWindow:
         self._on_close()
 
 
-def show_log_window(get_logs_page: Callable[[int, int], tuple], title: str = "LLM-ROUTE 日志"):
+def show_log_window(
+    get_logs_page: Callable[[int, int], tuple], title: str = "LLM-ROUTE 日志"
+):
     """显示日志窗口（便捷函数）"""
     window = LogWindow(get_logs_page, title)
     window.show()

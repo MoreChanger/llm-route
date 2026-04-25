@@ -2,6 +2,7 @@
 
 提供跨平台能力检测函数，用于判断当前运行环境和可用功能。
 """
+
 import os
 import sys
 from pathlib import Path
@@ -71,6 +72,7 @@ def has_clipboard() -> bool:
     """
     try:
         import pyperclip
+
         # 尝试读取剪贴板内容
         pyperclip.paste()
         return True
@@ -92,18 +94,21 @@ def has_appindicator() -> bool:
 
     try:
         import gi
+
         # 尝试 AppIndicator3
         try:
-            gi.require_version('AppIndicator3', '0.1')
+            gi.require_version("AppIndicator3", "0.1")
             from gi.repository import AppIndicator3  # noqa: F401
+
             return True
         except (ValueError, ImportError):
             pass
 
         # 尝试 AyatanaAppIndicator3
         try:
-            gi.require_version('AyatanaAppIndicator3', '0.1')
+            gi.require_version("AyatanaAppIndicator3", "0.1")
             from gi.repository import AyatanaAppIndicator3  # noqa: F401
+
             return True
         except (ValueError, ImportError):
             pass
@@ -155,4 +160,5 @@ def get_platform_info() -> dict:
 if __name__ == "__main__":
     # 测试输出
     import json
+
     print(json.dumps(get_platform_info(), indent=2))

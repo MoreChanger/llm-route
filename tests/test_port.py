@@ -1,4 +1,5 @@
 """端口管理模块测试"""
+
 import pytest
 from unittest.mock import patch
 
@@ -16,6 +17,7 @@ class TestIsPortAvailable:
         """测试不可用端口"""
         # 模拟端口被占用
         import socket
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind(("127.0.0.1", 59998))
 
@@ -57,7 +59,7 @@ class TestFindAvailablePort:
     def test_find_exhausted_ports(self):
         """测试端口耗尽情况"""
         # 使用一个不可能的范围，模拟端口耗尽
-        with patch('src.port.is_port_available', return_value=False):
+        with patch("src.port.is_port_available", return_value=False):
             with pytest.raises(RuntimeError, match="No available port"):
                 find_available_port("127.0.0.1", 8087, max_attempts=5)
 

@@ -1,4 +1,5 @@
 """配置加载与校验模块"""
+
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,6 +12,7 @@ import yaml
 @dataclass
 class RetryRule:
     """重试规则"""
+
     status: int
     max_retries: int = 10
     delay: float = 2.0
@@ -21,6 +23,7 @@ class RetryRule:
 @dataclass
 class Upstream:
     """上游服务配置"""
+
     url: str
     protocol: str = "anthropic"
     convert_responses: bool = False  # 是否转换 /responses 为 /v1/chat/completions
@@ -29,6 +32,7 @@ class Upstream:
 @dataclass
 class Route:
     """路由规则"""
+
     path: str
     upstream: str
 
@@ -36,6 +40,7 @@ class Route:
 @dataclass
 class Config:
     """主配置"""
+
     host: str = "127.0.0.1"
     port: Union[int, str] = 8087  # int 或 "auto"
     log_level: int = 2  # 1=基础, 2=详细, 3=完整
@@ -47,7 +52,7 @@ class Config:
 def get_presets_dir() -> Path:
     """获取预设目录路径"""
     # 优先使用可执行文件同目录
-    if getattr(os, 'frozen', False):
+    if getattr(os, "frozen", False):
         base_dir = Path(sys.executable).parent
     else:
         base_dir = Path(__file__).parent.parent
@@ -124,7 +129,13 @@ def apply_preset(preset_path: Path, config_path: str) -> bool:
 
         # 写回配置文件（使用 sort_keys=False 保持顺序）
         with open(config_file, "w", encoding="utf-8") as f:
-            yaml.dump(ordered_config, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+            yaml.dump(
+                ordered_config,
+                f,
+                allow_unicode=True,
+                default_flow_style=False,
+                sort_keys=False,
+            )
 
         return True
     except Exception as e:
@@ -159,27 +170,28 @@ def load_config(config_path: str) -> Config:
         config.upstreams[name] = Upstream(
             url=upstream_data["url"],
             protocol=upstream_data.get("protocol", "anthropic"),
-            convert_responses=upstream_data.get("convert_responses", False)
+            convert_responses=upstream_data.get("convert_responses", False),
         )
 
     # 加载路由配置
     routes_data = data.get("routes", [])
     for route_data in routes_data:
-        config.routes.append(Route(
-            path=route_data["path"],
-            upstream=route_data["upstream"]
-        ))
+        config.routes.append(
+            Route(path=route_data["path"], upstream=route_data["upstream"])
+        )
 
     # 加载重试规则
     retry_data = data.get("retry_rules", [])
     for rule_data in retry_data:
-        config.retry_rules.append(RetryRule(
-            status=rule_data["status"],
-            max_retries=rule_data.get("max_retries", 10),
-            delay=rule_data.get("delay", 2.0),
-            jitter=rule_data.get("jitter", 1.0),
-            body_contains=rule_data.get("body_contains")
-        ))
+        config.retry_rules.append(
+            RetryRule(
+                status=rule_data["status"],
+                max_retries=rule_data.get("max_retries", 10),
+                delay=rule_data.get("delay", 2.0),
+                jitter=rule_data.get("jitter", 1.0),
+                body_contains=rule_data.get("body_contains"),
+            )
+        )
 
     # 环境变量覆盖
     env_port = os.environ.get("LLM_ROUTE_PORT")
@@ -214,4 +226,6 @@ def save_config(config: Config, config_path: str):
 
     # 写回文件
     with open(path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        yaml.dump(
+            data, f, allow_unicode=True, default_flow_style=False, sort_keys=False
+        )

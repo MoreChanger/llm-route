@@ -2,6 +2,7 @@
 
 支持 Windows、Linux、macOS 的开机自启功能。
 """
+
 import os
 import sys
 import subprocess
@@ -11,6 +12,7 @@ from pathlib import Path
 
 class UnsupportedPlatformError(Exception):
     """不支持的平台异常"""
+
     pass
 
 
@@ -168,10 +170,7 @@ X-GNOME-Autostart-enabled=true
 
     def _get_autostart_dir(self) -> Path:
         """获取 autostart 目录路径"""
-        config_home = os.environ.get(
-            "XDG_CONFIG_HOME",
-            Path.home() / ".config"
-        )
+        config_home = os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")
         return Path(config_home) / "autostart"
 
     def _get_desktop_file(self) -> Path:
@@ -196,10 +195,16 @@ X-GNOME-Autostart-enabled=true
             # Desktop Entry 规范转义：处理特殊字符
             # % 字符需要转义为 %%
             # 换行符和制表符需要移除
-            escaped_app_name = self.app_name.replace("%", "%%").replace("\n", "").replace("\t", "")
+            escaped_app_name = (
+                self.app_name.replace("%", "%%").replace("\n", "").replace("\t", "")
+            )
             escaped_exec_path = exec_path.replace("%", "%%")
             escaped_icon_path = icon_path.replace("%", "%%") if icon_path else ""
-            escaped_comment = f"{self.app_name} LLM API Router".replace("%", "%%").replace("\n", "").replace("\t", "")
+            escaped_comment = (
+                f"{self.app_name} LLM API Router".replace("%", "%%")
+                .replace("\n", "")
+                .replace("\t", "")
+            )
 
             content = self.DESKTOP_ENTRY.format(
                 app_name=escaped_app_name,
@@ -274,6 +279,7 @@ class _MacOSAutoStart(_AutoStartImpl):
 
             # 使用 xml.sax.saxutils 转义 XML 特殊字符
             from xml.sax.saxutils import escape
+
             escaped_label = escape(label)
             escaped_exec_path = escape(exec_path)
 
