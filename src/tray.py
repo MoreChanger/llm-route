@@ -288,9 +288,11 @@ class TrayManager:
         """切换服务状态"""
         # 使用回调函数，由主线程的事件循环处理
         self.on_toggle_service()
+
         # 延迟更新菜单，等待服务状态改变
         def delayed_update():
             self._update_menu()
+
         threading.Timer(0.5, delayed_update).start()
 
     def _change_port(self):

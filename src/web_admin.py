@@ -1103,9 +1103,7 @@ class WebAdminHandler:
         )
 
         # 密码管理端点
-        app.router.add_get(
-            "/_admin/api/password-status", self.handle_password_status
-        )
+        app.router.add_get("/_admin/api/password-status", self.handle_password_status)
         app.router.add_post(
             "/_admin/api/password", self.require_auth(self.handle_password_change)
         )
@@ -1291,31 +1289,37 @@ class WebAdminHandler:
         # 构建 upstreams 信息
         upstreams = []
         for name, upstream in config.upstreams.items():
-            upstreams.append({
-                "name": name,
-                "url": upstream.url,
-                "protocol": upstream.protocol,
-                "convert_responses": upstream.convert_responses,
-            })
+            upstreams.append(
+                {
+                    "name": name,
+                    "url": upstream.url,
+                    "protocol": upstream.protocol,
+                    "convert_responses": upstream.convert_responses,
+                }
+            )
 
         # 构建 routes 信息
         routes = []
         for route in config.routes:
-            routes.append({
-                "path": route.path,
-                "upstream": route.upstream,
-            })
+            routes.append(
+                {
+                    "path": route.path,
+                    "upstream": route.upstream,
+                }
+            )
 
         # 构建 retry_rules 信息
         retry_rules = []
         for rule in config.retry_rules:
-            retry_rules.append({
-                "status": rule.status,
-                "max_retries": rule.max_retries,
-                "delay": rule.delay,
-                "jitter": rule.jitter,
-                "body_contains": rule.body_contains,
-            })
+            retry_rules.append(
+                {
+                    "status": rule.status,
+                    "max_retries": rule.max_retries,
+                    "delay": rule.delay,
+                    "jitter": rule.jitter,
+                    "body_contains": rule.body_contains,
+                }
+            )
 
         return web.json_response(
             {
@@ -1441,10 +1445,12 @@ class WebAdminHandler:
             save_failed = True
 
         if save_failed:
-            return web.json_response({
-                "success": True,
-                "warning": "密码已修改，但无法保存到配置文件。\n\n解决方法：在宿主机执行 chmod 666 config.yaml\n\n重启容器后需要重新设置密码。"
-            })
+            return web.json_response(
+                {
+                    "success": True,
+                    "warning": "密码已修改，但无法保存到配置文件。\n\n解决方法：在宿主机执行 chmod 666 config.yaml\n\n重启容器后需要重新设置密码。",
+                }
+            )
         return web.json_response({"success": True})
 
     async def handle_log_stats(self, request: web.Request) -> web.Response:

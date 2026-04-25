@@ -382,7 +382,10 @@ class LogManager:
         with self._lock:
             # 检查是否需要滚动
             line_size = len(log_line.encode("utf-8")) + 1
-            if self._current_size + line_size > self._max_log_size and self._current_size > 0:
+            if (
+                self._current_size + line_size > self._max_log_size
+                and self._current_size > 0
+            ):
                 self._rotate_log_file()
 
             if self._log_file:
@@ -449,10 +452,14 @@ class LogManager:
                 self.log(f"{method} {path} -> {upstream} [{status_code}]")
             elif self._log_level == 2:
                 retry_str = f" (重试{retries}次)" if retries > 0 else ""
-                self.log(f"{method} {path} -> {upstream} [{status_code}] {elapsed_ms:.0f}ms{retry_str}")
+                self.log(
+                    f"{method} {path} -> {upstream} [{status_code}] {elapsed_ms:.0f}ms{retry_str}"
+                )
             else:
                 retry_str = f" (重试{retries}次)" if retries > 0 else ""
-                self.log(f"{method} {path} -> {upstream} [{status_code}] {elapsed_ms:.0f}ms{retry_str}")
+                self.log(
+                    f"{method} {path} -> {upstream} [{status_code}] {elapsed_ms:.0f}ms{retry_str}"
+                )
                 if request_body:
                     self.log(f"  请求: {request_body}")
                 if response_body:

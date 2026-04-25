@@ -116,7 +116,9 @@ class _WindowsAutoStart(_AutoStartImpl):
             message: 错误描述
             error: 异常对象
         """
-        error_code = getattr(error, 'winerror', None) or getattr(error, 'errno', 'unknown')
+        error_code = getattr(error, "winerror", None) or getattr(
+            error, "errno", "unknown"
+        )
         _logger.error(f"[AutoStart] {message}: {error} (code: {error_code})")
 
     def enable(self) -> bool:

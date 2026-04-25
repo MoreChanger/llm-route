@@ -381,7 +381,9 @@ class ProxyServer:
                 if truncated:
                     # 保留最后 STREAMING_LOG_MAX_SIZE 字节
                     all_data = b"".join(resp_chunks)
-                    resp_body = all_data[-STREAMING_LOG_MAX_SIZE:].decode("utf-8", errors="ignore")
+                    resp_body = all_data[-STREAMING_LOG_MAX_SIZE:].decode(
+                        "utf-8", errors="ignore"
+                    )
                     resp_body = f"[truncated, showing last 64KB]\n{resp_body}"
                 else:
                     resp_body = b"".join(resp_chunks).decode("utf-8", errors="ignore")
@@ -586,7 +588,9 @@ class ProxyServer:
             if truncated:
                 # 保留最后 STREAMING_LOG_MAX_SIZE 字节
                 all_data = b"".join(response_chunks)
-                resp_body = all_data[-STREAMING_LOG_MAX_SIZE:].decode("utf-8", errors="ignore")
+                resp_body = all_data[-STREAMING_LOG_MAX_SIZE:].decode(
+                    "utf-8", errors="ignore"
+                )
                 resp_body = f"[truncated, showing last 64KB]\n{resp_body}"
             else:
                 resp_body = b"".join(response_chunks).decode("utf-8", errors="ignore")
