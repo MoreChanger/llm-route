@@ -1436,16 +1436,13 @@ class WebAdminHandler:
 
         preset_list = []
         for name, path in presets:
-            preset_list.append({
-                "name": name,
-                "path": str(path),
-                "current": name == current_preset
-            })
+            preset_list.append(
+                {"name": name, "path": str(path), "current": name == current_preset}
+            )
 
-        return web.json_response({
-            "presets": preset_list,
-            "current_preset": current_preset
-        })
+        return web.json_response(
+            {"presets": preset_list, "current_preset": current_preset}
+        )
 
     async def handle_preset_preview(self, request: web.Request) -> web.Response:
         """返回预设预览内容"""
@@ -1467,43 +1464,54 @@ class WebAdminHandler:
         # 读取预设内容
         try:
             import yaml
+
             with open(preset_path, "r", encoding="utf-8") as f:
                 preset_data = yaml.safe_load(f) or {}
 
             # 构建预览数据
             upstreams = []
             for name, upstream in (preset_data.get("upstreams") or {}).items():
-                upstreams.append({
-                    "name": name,
-                    "url": upstream.get("url", ""),
-                    "protocol": upstream.get("protocol", "anthropic"),
-                    "convert_responses": upstream.get("convert_responses", False),
-                })
+                upstreams.append(
+                    {
+                        "name": name,
+                        "url": upstream.get("url", ""),
+                        "protocol": upstream.get("protocol", "anthropic"),
+                        "convert_responses": upstream.get("convert_responses", False),
+                    }
+                )
 
             routes = []
-            for route in (preset_data.get("routes") or []):
-                routes.append({
-                    "path": route.get("path", ""),
-                    "upstream": route.get("upstream", ""),
-                })
+            for route in preset_data.get("routes") or []:
+                routes.append(
+                    {
+                        "path": route.get("path", ""),
+                        "upstream": route.get("upstream", ""),
+                    }
+                )
 
             retry_rules = []
-            for rule in (preset_data.get("retry_rules") or []):
-                retry_rules.append({
-                    "status": rule.get("status"),
-                    "max_retries": rule.get("max_retries", 10),
-                    "delay": rule.get("delay", 2.0),
-                    "body_contains": rule.get("body_contains"),
-                })
+            for rule in preset_data.get("retry_rules") or []:
+                retry_rules.append(
+                    {
+                        "status": rule.get("status"),
+                        "max_retries": rule.get("max_retries", 10),
+                        "delay": rule.get("delay", 2.0),
+                        "body_contains": rule.get("body_contains"),
+                    }
+                )
 
-            return web.json_response({
-                "name": preset_name,
-                "upstreams": upstreams,
-                "routes": routes,
-                "retry_rules": retry_rules,
-            })
+            return web.json_response(
+                {
+                    "name": preset_name,
+                    "upstreams": upstreams,
+                    "routes": routes,
+                    "retry_rules": retry_rules,
+                }
+            )
         except Exception as e:
-            return web.json_response({"error": f"Failed to read preset: {str(e)}"}, status=500)
+            return web.json_response(
+                {"error": f"Failed to read preset: {str(e)}"}, status=500
+            )
 
     async def handle_preset_apply(self, request: web.Request) -> web.Response:
         """应用预设"""
@@ -1531,11 +1539,13 @@ class WebAdminHandler:
             # 通知托盘刷新预设标记
             if self._on_config_change:
                 self._on_config_change()
-            return web.json_response({
-                "success": True,
-                "preset": preset_name,
-                "message": f"已切换到预设 {preset_name}"
-            })
+            return web.json_response(
+                {
+                    "success": True,
+                    "preset": preset_name,
+                    "message": f"已切换到预设 {preset_name}",
+                }
+            )
         else:
             return web.json_response({"error": "Failed to apply preset"}, status=500)
 

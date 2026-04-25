@@ -251,7 +251,10 @@ class TestConfigSaveClearsPreset(AioHTTPTestCase):
 
         # 使用临时文件
         import tempfile
-        self.temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
+
+        self.temp_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        )
         self.temp_file.write("host: 127.0.0.1\nport: 8087\n")
         self.temp_file.close()
 
@@ -275,10 +278,7 @@ class TestConfigSaveClearsPreset(AioHTTPTestCase):
         await self.client.post("/_admin/api/login", json={"password": "test_password"})
 
         # 保存配置（修改端口）
-        resp = await self.client.post(
-            "/_admin/api/config",
-            json={"port": 9000}
-        )
+        resp = await self.client.post("/_admin/api/config", json={"port": 9000})
         assert resp.status == 200
 
         # 验证预设标记被清除
@@ -293,10 +293,7 @@ class TestConfigSaveClearsPreset(AioHTTPTestCase):
         await self.client.post("/_admin/api/login", json={"password": "test_password"})
 
         # 保存配置（修改日志等级）
-        resp = await self.client.post(
-            "/_admin/api/config",
-            json={"log_level": 3}
-        )
+        resp = await self.client.post("/_admin/api/config", json={"log_level": 3})
         assert resp.status == 200
 
         # 验证预设标记被清除
@@ -371,6 +368,7 @@ class TestPresetPreviewAPI(AioHTTPTestCase):
         # 创建临时预设目录
         import tempfile
         import os
+
         self.temp_dir = tempfile.mkdtemp()
         self.presets_dir = os.path.join(self.temp_dir, "presets")
         os.makedirs(self.presets_dir)
@@ -443,7 +441,10 @@ class TestPresetApplyAPI(AioHTTPTestCase):
 
         # 创建临时配置文件
         import tempfile
-        self.temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
+
+        self.temp_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        )
         self.temp_file.write("host: 127.0.0.1\nport: 8087\n")
         self.temp_file.close()
 
@@ -461,18 +462,14 @@ class TestPresetApplyAPI(AioHTTPTestCase):
     async def test_preset_apply_requires_auth(self):
         """测试预设应用 API 需要认证"""
         resp = await self.client.post(
-            "/_admin/api/presets/apply",
-            json={"preset": "test-preset"}
+            "/_admin/api/presets/apply", json={"preset": "test-preset"}
         )
         assert resp.status == 401
 
     async def test_preset_apply_missing_preset_param(self):
         """测试缺少预设参数"""
         await self.client.post("/_admin/api/login", json={"password": "test_password"})
-        resp = await self.client.post(
-            "/_admin/api/presets/apply",
-            json={}
-        )
+        resp = await self.client.post("/_admin/api/presets/apply", json={})
         # 预设名为空，会返回 404（找不到空名称的预设）
         assert resp.status == 404
 
@@ -480,8 +477,7 @@ class TestPresetApplyAPI(AioHTTPTestCase):
         """测试预设不存在"""
         await self.client.post("/_admin/api/login", json={"password": "test_password"})
         resp = await self.client.post(
-            "/_admin/api/presets/apply",
-            json={"preset": "nonexistent-preset"}
+            "/_admin/api/presets/apply", json={"preset": "nonexistent-preset"}
         )
         assert resp.status == 404
         data = await resp.json()
@@ -493,7 +489,7 @@ class TestPresetApplyAPI(AioHTTPTestCase):
         resp = await self.client.post(
             "/_admin/api/presets/apply",
             data="not json",
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         )
         assert resp.status == 400
 
@@ -503,6 +499,7 @@ class TestPresetApplyAPI(AioHTTPTestCase):
 
         # 设置回调
         callback_called = []
+
         def test_callback():
             callback_called.append(True)
 
@@ -510,8 +507,7 @@ class TestPresetApplyAPI(AioHTTPTestCase):
 
         # 尝试应用一个不存在的预设（回调不应该被调用）
         resp = await self.client.post(
-            "/_admin/api/presets/apply",
-            json={"preset": "nonexistent-preset"}
+            "/_admin/api/presets/apply", json={"preset": "nonexistent-preset"}
         )
         assert resp.status == 404
         assert len(callback_called) == 0
@@ -523,16 +519,14 @@ class TestPresetApplyAPI(AioHTTPTestCase):
         # 配置保存目前不清除 _active_preset 的测试已在 TestConfigSaveClearsPreset 中
         # 这里测试回调机制存在
         callback_called = []
+
         def test_callback():
             callback_called.append(True)
 
         self.handler.set_on_config_change(test_callback)
 
         # 保存配置
-        resp = await self.client.post(
-            "/_admin/api/config",
-            json={"port": 9000}
-        )
+        resp = await self.client.post("/_admin/api/config", json={"port": 9000})
         assert resp.status == 200
         # 注意：当前实现中 handle_config_save 不调用 _on_config_change
         # 这是一个已知的限制（P2 问题），因为 WebUI 仅在 Docker 模式运行，此时无托盘
@@ -555,7 +549,10 @@ class TestPresetIntegration(AioHTTPTestCase):
 
         # 创建临时配置文件
         import tempfile
-        self.temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
+
+        self.temp_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        )
         self.temp_file.write("host: 127.0.0.1\nport: 8087\n")
         self.temp_file.close()
 
@@ -579,10 +576,7 @@ class TestPresetIntegration(AioHTTPTestCase):
         assert self.mock_proxy.config._active_preset is None
 
         # 2. 保存配置（模拟用户手动修改）
-        resp = await self.client.post(
-            "/_admin/api/config",
-            json={"port": 9000}
-        )
+        resp = await self.client.post("/_admin/api/config", json={"port": 9000})
         assert resp.status == 200
 
         # 3. 验证预设标记被清除
@@ -597,8 +591,7 @@ class TestPresetIntegration(AioHTTPTestCase):
 
         # 保存配置
         resp = await self.client.post(
-            "/_admin/api/config",
-            json={"port": 9001, "log_level": 2}
+            "/_admin/api/config", json={"port": 9001, "log_level": 2}
         )
         assert resp.status == 200
 

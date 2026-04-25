@@ -82,7 +82,9 @@ def list_presets() -> list[tuple[str, Path]]:
     return presets
 
 
-def apply_preset(preset_path: Path, config_path: str, preset_name: Optional[str] = None) -> bool:
+def apply_preset(
+    preset_path: Path, config_path: str, preset_name: Optional[str] = None
+) -> bool:
     """应用预设到配置文件
 
     Args:
