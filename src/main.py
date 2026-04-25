@@ -1,6 +1,7 @@
 """LLM-ROUTE 入口模块"""
 import argparse
 import asyncio
+import signal
 import sys
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from src.proxy import ProxyServer
 from src.tray import TrayManager
 from src.log_file import LogManager
 from src.single_instance import SingleInstanceLock
+from src.platform import is_docker_environment, get_platform_level
 
 
 def safe_print(message: str):
@@ -179,14 +181,32 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
 
 def main():
     """主入口"""
-    # 单实例检查
-    lock = SingleInstanceLock("llm-route")
-    if not lock.acquire():
-        safe_print("LLM-ROUTE 已在运行中")
-        sys.exit(1)
+    # 检测 Docker 环境
+    in_docker = is_docker_environment()
+    if in_docker:
+        safe_print("检测到 Docker 环境")
+        # Docker 环境中跳过单实例锁检查（容器隔离天然保证单实例）
+        lock = None
+    else:
+        # 单实例检查
+        lock = SingleInstanceLock("llm-route")
+        if not lock.acquire():
+            safe_print("LLM-ROUTE 已在运行中")
+            sys.exit(1)
 
     try:
         args = parse_args()
+
+        # 自动检测 headless 模式
+        # 1. 命令行指定
+        # 2. Docker 环境
+        # 3. 平台级别为 3（无显示服务）
+        platform_level = get_platform_level()
+        headless = args.headless or in_docker or platform_level == 3
+
+        if headless and not args.headless:
+            reason = "Docker 环境" if in_docker else "无显示服务"
+            safe_print(f"自动启用 headless 模式（原因：{reason}）")
 
         # 加载配置
         config_path = get_config_path(args)
@@ -218,8 +238,19 @@ def main():
         # 创建代理服务器
         server = ProxyServer(config, log_manager)
 
+        # 设置信号处理（Docker 环境尤为重要）
+        def signal_handler(signum, frame):
+            safe_print(f"\n收到信号 {signum}，正在停止服务...")
+            # 触发停止
+            if server.runner is not None:
+                asyncio.run_coroutine_threadsafe(server.stop(), asyncio.get_event_loop())
+            log_manager.stop()
+
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
         # 运行
-        if args.headless:
+        if headless:
             asyncio.run(run_headless(server, log_manager))
         else:
             asyncio.run(run_with_tray(server, log_manager, config_path))
@@ -236,8 +267,9 @@ def main():
             pass
         raise
     finally:
-        # 释放单实例锁
-        lock.release()
+        # 释放单实例锁（如果存在）
+        if lock is not None:
+            lock.release()
 
 
 if __name__ == "__main__":
