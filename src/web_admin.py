@@ -331,6 +331,10 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
             color: #fff;
             font-size: 13px;
         }
+        select option {
+            background: #1a1a2e;
+            color: #fff;
+        }
         select:focus, input:focus { outline: none; border-color: #4a9eff; }
         .checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
         .checkbox-label input { width: 16px; height: 16px; }
@@ -344,9 +348,13 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
             padding: 10px 14px;
             border: 1px solid #333;
             border-radius: 8px;
-            background: rgba(255,255,255,0.05);
+            background: #1a1a2e;
             color: #fff;
             font-size: 14px;
+        }
+        .form-group select option {
+            background: #1a1a2e;
+            color: #fff;
         }
         .form-group input:focus, .form-group select:focus { outline: none; border-color: #4a9eff; }
         .notice {
