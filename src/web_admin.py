@@ -443,11 +443,109 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
         .config-item-detail span {
             color: #aaa;
         }
+        /* Modal styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: #1e1e2e;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-header h3 {
+            margin: 0;
+            font-size: 16px;
+            color: #fff;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+        .modal-close:hover { color: #fff; }
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .modal-footer {
+            padding: 16px 20px;
+            border-top: 1px solid #333;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        .preview-section {
+            margin-bottom: 16px;
+        }
+        .preview-section:last-child {
+            margin-bottom: 0;
+        }
+        .preview-section-title {
+            color: #4a9eff;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .preview-empty {
+            color: #888;
+            font-style: italic;
+        }
+        .preview-item {
+            background: rgba(255,255,255,0.02);
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+        .preview-item:last-child {
+            margin-bottom: 0;
+        }
     </style>
 </head>
 <body>
     <div id="loadingOverlay" class="loading-overlay hidden">
         <div class="loading-spinner"></div>
+    </div>
+    <!-- 预设预览弹窗 -->
+    <div id="presetModal" class="modal-overlay hidden" onclick="closePresetModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="presetModalTitle">预设预览</h3>
+                <button class="modal-close" onclick="closePresetModal()">&times;</button>
+            </div>
+            <div id="presetModalBody" class="modal-body">
+                <div class="loading-spinner"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closePresetModal()">取消</button>
+                <button id="presetModalConfirm" class="btn btn-primary" onclick="confirmApplyPreset()">确认应用</button>
+            </div>
+        </div>
     </div>
     <header class="header">
         <h1>LLM-ROUTE 管理面板</h1>
@@ -784,18 +882,94 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
             }
         }
 
+        let pendingPresetName = null;
+
         async function applyPreset(name) {
-            if (!confirm(`确定要应用预设 "${name}" 吗？这将重启服务。`)) return;
+            pendingPresetName = name;
+            const modal = document.getElementById('presetModal');
+            const modalBody = document.getElementById('presetModalBody');
+            const modalTitle = document.getElementById('presetModalTitle');
+
+            modalTitle.textContent = `预设预览: ${name}`;
+            modalBody.innerHTML = '<div class="loading-spinner"></div>';
+            modal.classList.remove('hidden');
+
+            try {
+                const resp = await api(`/presets/preview?name=${encodeURIComponent(name)}`);
+                if (!resp.ok) {
+                    const error = await resp.json();
+                    modalBody.innerHTML = `<div class="preview-empty">加载失败: ${error.error || '未知错误'}</div>`;
+                    return;
+                }
+                const data = await resp.json();
+                renderPresetPreview(data);
+            } catch (e) {
+                modalBody.innerHTML = `<div class="preview-empty">加载失败</div>`;
+            }
+        }
+
+        function renderPresetPreview(data) {
+            const modalBody = document.getElementById('presetModalBody');
+            let html = '';
+
+            // Upstreams
+            html += '<div class="preview-section">';
+            html += '<div class="preview-section-title">上游服务</div>';
+            if (data.upstreams && data.upstreams.length > 0) {
+                data.upstreams.forEach(u => {
+                    html += `<div class="preview-item"><strong>${escapeHtml(u.name)}</strong> - ${escapeHtml(u.url)} (${escapeHtml(u.protocol)})</div>`;
+                });
+            } else {
+                html += '<div class="preview-empty">无</div>';
+            }
+            html += '</div>';
+
+            // Routes
+            html += '<div class="preview-section">';
+            html += '<div class="preview-section-title">路由规则</div>';
+            if (data.routes && data.routes.length > 0) {
+                data.routes.forEach(r => {
+                    html += `<div class="preview-item"><strong>${escapeHtml(r.path)}</strong> → ${escapeHtml(r.upstream)}</div>`;
+                });
+            } else {
+                html += '<div class="preview-empty">无</div>';
+            }
+            html += '</div>';
+
+            // Retry rules
+            html += '<div class="preview-section">';
+            html += '<div class="preview-section-title">重试规则</div>';
+            if (data.retry_rules && data.retry_rules.length > 0) {
+                data.retry_rules.forEach(r => {
+                    html += `<div class="preview-item">状态 ${r.status}: 最多重试 ${r.max_retries} 次</div>`;
+                });
+            } else {
+                html += '<div class="preview-empty">无</div>';
+            }
+            html += '</div>';
+
+            modalBody.innerHTML = html;
+        }
+
+        function closePresetModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('presetModal').classList.add('hidden');
+            pendingPresetName = null;
+        }
+
+        async function confirmApplyPreset() {
+            if (!pendingPresetName) return;
+            closePresetModal();
             showLoading();
             try {
                 const resp = await api('/presets/apply', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({preset: name})
+                    body: JSON.stringify({preset: pendingPresetName})
                 });
                 const data = await resp.json();
                 if (resp.ok) {
-                    alert('预设已应用');
+                    alert(data.message || '预设已应用');
                     await Promise.all([refreshStatus(), loadPresets(), loadConfig()]);
                 } else {
                     alert('应用失败: ' + data.error);
@@ -1357,7 +1531,11 @@ class WebAdminHandler:
             # 通知托盘刷新预设标记
             if self._on_config_change:
                 self._on_config_change()
-            return web.json_response({"success": True, "preset": preset_name})
+            return web.json_response({
+                "success": True,
+                "preset": preset_name,
+                "message": f"已切换到预设 {preset_name}"
+            })
         else:
             return web.json_response({"error": "Failed to apply preset"}, status=500)
 
