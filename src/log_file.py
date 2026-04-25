@@ -7,11 +7,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 import threading
-import glob
+import os
 
 
 # 敏感头字段列表（小写）
 SENSITIVE_HEADERS = {"authorization", "x-api-key"}
+
+# 默认日志文件大小限制 (10MB)
+DEFAULT_MAX_LOG_SIZE = 10 * 1024 * 1024
 
 
 def sanitize_sensitive_content(content: str) -> str:
@@ -54,7 +57,7 @@ def sanitize_sensitive_content(content: str) -> str:
 
 
 class LogManager:
-    """日志管理器 - 文件驱动"""
+    """日志管理器 - 文件驱动，支持日志滚动和高效分页"""
 
     def __init__(self):
         self._log_file: Optional[object] = None
@@ -62,7 +65,11 @@ class LogManager:
         self._lock = threading.Lock()
         self._log_level: int = 2  # 默认详细信息
         self._log_retention_days: int = 7  # 默认保留7天
+        self._max_log_size: int = DEFAULT_MAX_LOG_SIZE  # 单文件最大大小
         self._line_count: int = 0  # 当前行数
+        self._current_size: int = 0  # 当前文件大小
+        self._line_offsets: list[int] = []  # 行偏移索引（用于高效分页）
+        self._base_timestamp: str = ""  # 基础时间戳（用于滚动命名）
 
     def get_logs_dir(self) -> Path:
         """获取日志目录路径"""
@@ -93,15 +100,31 @@ class LogManager:
         logs_dir.mkdir(parents=True, exist_ok=True)
 
         # 创建日志文件（按启动时间命名）
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self._log_path = logs_dir / f"{timestamp}.log"
+        self._base_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self._log_path = logs_dir / f"{self._base_timestamp}.log"
         self._log_file = open(self._log_path, "w", encoding="utf-8")
         self._line_count = 0
+        self._current_size = 0
+        self._line_offsets = [0]  # 第一行从偏移0开始
 
         # 清理过期日志
         self._cleanup_old_logs()
 
         return self._log_path
+
+    def _rotate_log_file(self):
+        """滚动日志文件（当文件超过大小限制时）"""
+        if self._log_file:
+            self._log_file.close()
+
+        # 创建新的滚动文件
+        logs_dir = self.get_logs_dir()
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self._log_path = logs_dir / f"{self._base_timestamp}_{timestamp}.log"
+        self._log_file = open(self._log_path, "w", encoding="utf-8")
+        self._line_count = 0
+        self._current_size = 0
+        self._line_offsets = [0]
 
     def _cleanup_old_logs(self):
         """清理过期的日志文件"""
@@ -173,11 +196,20 @@ class LogManager:
         log_line = f"[{timestamp}] {level:5} {message}"
 
         with self._lock:
+            # 检查是否需要滚动文件
+            line_size = len(log_line.encode("utf-8")) + 1  # +1 for newline
+            if self._current_size + line_size > self._max_log_size and self._current_size > 0:
+                self._rotate_log_file()
+
             # 写入文件
             if self._log_file:
+                # 记录行偏移（用于高效分页）
+                self._line_offsets.append(self._current_size)
+
                 self._log_file.write(log_line + "\n")
                 self._log_file.flush()
                 self._line_count += 1
+                self._current_size += line_size
 
         # 打印到控制台（无控制台模式下忽略错误）
         try:
@@ -235,20 +267,15 @@ class LogManager:
 
     def get_line_count(self) -> int:
         """获取日志文件总行数"""
-        if self._log_path and self._log_path.exists():
-            with self._lock:
-                # 刷新文件缓冲区
-                if self._log_file:
-                    self._log_file.flush()
-                # 统计行数
-                with open(self._log_path, "r", encoding="utf-8") as f:
-                    return sum(1 for _ in f)
-        return 0
+        with self._lock:
+            if self._log_file:
+                self._log_file.flush()
+            return len(self._line_offsets)
 
     def get_logs_page(
         self, page: int, page_size: int = 100
     ) -> tuple[list[str], int, int]:
-        """从文件获取分页日志
+        """从文件获取分页日志（使用 seek 优化大文件读取）
 
         Args:
             page: 页码（从1开始）
@@ -265,19 +292,50 @@ class LogManager:
             if self._log_file:
                 self._log_file.flush()
 
-            # 读取所有行
-            with open(self._log_path, "r", encoding="utf-8") as f:
-                all_lines = f.readlines()
+            # 使用行偏移索引高效定位
+            total = len(self._line_offsets)
 
-            total = len(all_lines)
+            # 如果索引不完整（外部修改等），重新构建
+            if total == 0 or self._line_offsets[-1] < self._current_size - 1000:
+                self._rebuild_line_index()
+                total = len(self._line_offsets)
+
             total_pages = (total + page_size - 1) // page_size if total > 0 else 1
             page = max(1, min(page, total_pages))
-            start = (page - 1) * page_size
-            end = start + page_size
+            start_line = (page - 1) * page_size
+            end_line = min(start_line + page_size, total)
 
-            # 去除换行符
-            logs = [line.rstrip("\n\r") for line in all_lines[start:end]]
+            if start_line >= total:
+                return [], total_pages, total
+
+            # 使用 seek 定位到起始行
+            with open(self._log_path, "r", encoding="utf-8") as f:
+                start_offset = self._line_offsets[start_line]
+                f.seek(start_offset)
+
+                # 读取指定行数
+                logs = []
+                for i in range(start_line, end_line):
+                    line = f.readline()
+                    if not line:
+                        break
+                    logs.append(line.rstrip("\n\r"))
+
             return logs, total_pages, total
+
+    def _rebuild_line_index(self):
+        """重建行偏移索引"""
+        self._line_offsets = []
+        if not self._log_path or not self._log_path.exists():
+            return
+
+        with open(self._log_path, "r", encoding="utf-8") as f:
+            offset = 0
+            for line in f:
+                self._line_offsets.append(offset)
+                offset += len(line.encode("utf-8"))
+
+        self._current_size = offset if self._line_offsets else 0
 
     def get_last_n_lines(self, n: int) -> list[str]:
         """获取最后 N 行日志
