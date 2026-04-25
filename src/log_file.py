@@ -45,7 +45,8 @@ def sanitize_sensitive_content(content: str) -> str:
 
     # HTTP 头格式（可能在日志中出现）
     # 匹配整个值部分（冒号后到行尾或下一个结构符号）
-    http_pattern = r'(Authorization|x-api-key):\s*[^\n\]\[{}"]+'
+    # 使用单词边界确保只匹配完整的头字段名
+    http_pattern = r'\b(Authorization|x-api-key):\s*[^\n\]\[{}"]+'
     result = re.sub(http_pattern, redact_http_header, result, flags=re.IGNORECASE)
 
     return result

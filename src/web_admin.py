@@ -730,7 +730,13 @@ class WebAdminHandler:
         """注册路由到 aiohttp 应用
 
         注意：必须在 catch-all 路由之前调用此方法。
+        此方法幂等，重复调用不会重复注册路由。
         """
+        # 检查路由是否已注册（支持服务重启场景）
+        existing_routes = {r.path for r in app.router.routes()}
+        if "/_admin/api/login" in existing_routes:
+            return
+
         # 登录端点（无需认证）
         app.router.add_post("/_admin/api/login", self.handle_login)
 
@@ -815,7 +821,7 @@ class WebAdminHandler:
         try:
             data = await request.json()
             password = data.get("password", "")
-        except (json.JSONDecodeError, KeyError):
+        except json.JSONDecodeError:
             return web.json_response({"error": "Invalid request"}, status=400)
 
         # 验证密码
@@ -869,6 +875,9 @@ class WebAdminHandler:
         # 按级别过滤
         if level:
             logs = [line for line in logs if level in line]
+            # 重新计算过滤后的总页数
+            filtered_count = len(logs)
+            total_pages = max(1, (filtered_count + page_size - 1) // page_size) if filtered_count > 0 else 1
 
         return web.json_response(
             {"logs": logs, "page": page, "total_pages": total_pages, "total_count": total_count}
@@ -878,11 +887,8 @@ class WebAdminHandler:
         """返回可用预设列表"""
         presets = list_presets()
 
-        # 获取当前配置的上游名称作为当前预设标记
-        current_upstreams = set(self.proxy_server.config.upstreams.keys())
         preset_list = []
         for name, path in presets:
-            # 简单判断：如果预设文件名在配置中有对应，标记为当前
             preset_list.append({"name": name, "path": str(path), "current": False})
 
         return web.json_response({"presets": preset_list})
@@ -892,7 +898,7 @@ class WebAdminHandler:
         try:
             data = await request.json()
             preset_name = data.get("preset", "")
-        except (json.JSONDecodeError, KeyError):
+        except json.JSONDecodeError:
             return web.json_response({"error": "Invalid request"}, status=400)
 
         # 查找预设
@@ -968,6 +974,7 @@ class WebAdminHandler:
         """停止服务"""
         try:
             await self.proxy_server.stop()
+            self._start_time = None  # 重置启动时间
             return web.json_response({"success": True})
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
