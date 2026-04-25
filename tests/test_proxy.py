@@ -1,8 +1,6 @@
 """代理服务模块测试"""
 import pytest
-import asyncio
-from unittest.mock import MagicMock, patch, AsyncMock
-from aiohttp import web
+from unittest.mock import patch
 
 from src.proxy import ProxyServer, match_route, RequestContext
 from src.config import Config, Upstream, Route, RetryRule
@@ -94,7 +92,7 @@ class TestProxyServer:
         import aiohttp
         async with aiohttp.ClientSession() as session:
             # 发送一个请求，应该返回 404（没有匹配的路由）
-            async with session.get(f"http://127.0.0.1:18087/unknown") as resp:
+            async with session.get("http://127.0.0.1:18087/unknown") as resp:
                 assert resp.status == 404
 
         await server.stop()
@@ -109,7 +107,7 @@ class TestProxyServer:
 
         import aiohttp
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"http://127.0.0.1:18087/unknown/path") as resp:
+            async with session.get("http://127.0.0.1:18087/unknown/path") as resp:
                 assert resp.status == 404
 
         await server.stop()
@@ -126,7 +124,7 @@ class TestProxyServer:
         async with aiohttp.ClientSession() as session:
             # 发送请求到已知路由
             async with session.post(
-                f"http://127.0.0.1:18087/v1/messages",
+                "http://127.0.0.1:18087/v1/messages",
                 json={"test": "data"},
                 headers={"Content-Type": "application/json"}
             ) as resp:
@@ -158,7 +156,6 @@ class TestProxyServer:
 # 在 tests/test_proxy.py 末尾添加
 
 import json
-from src.responses_models import ResponsesRequest
 
 
 class TestProxyResponsesHandling:

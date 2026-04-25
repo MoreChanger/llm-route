@@ -1,10 +1,9 @@
 # tests/test_responses_converter.py
 """Responses API 转换器测试"""
 import pytest
-import json
 from src.session_manager import SessionManager
 from src.responses_converter import ResponsesConverter
-from src.responses_models import ResponsesRequest, ResponseInput
+from src.responses_models import ResponsesRequest
 
 
 class TestResponsesConverter:

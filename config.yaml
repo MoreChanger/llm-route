@@ -1,6 +1,6 @@
 host: 127.0.0.1
 port: 8087
-log_level: 3
+log_level: 2
 upstreams:
   anthropic:
     url: https://modelservice.jdcloud.com/coding/anthropic

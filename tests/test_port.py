@@ -1,6 +1,6 @@
 """端口管理模块测试"""
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from src.port import is_port_available, find_available_port, random_available_port
 

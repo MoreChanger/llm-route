@@ -1,6 +1,5 @@
 # tests/test_responses_models.py
 """Responses API 数据模型测试"""
-import pytest
 from src.responses_models import (
     ResponseInput, ResponsesRequest, ResponseContent,
     ResponsesOutput, ResponsesResponse

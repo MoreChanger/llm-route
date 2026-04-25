@@ -1,5 +1,4 @@
 """系统托盘模块"""
-import sys
 import threading
 from typing import Callable, Optional
 
@@ -195,9 +194,9 @@ class TrayManager:
 
         for level, name in levels:
             display_name = name + (" ✓" if level == current_level else "")
-            def make_callback(l):
+            def make_callback(lvl):
                 def callback(icon, item):
-                    self._set_log_level(l)
+                    self._set_log_level(lvl)
                 return callback
             items.append(
                 pystray.MenuItem(
@@ -292,8 +291,6 @@ class TrayManager:
 
     def _toggle_service(self):
         """切换服务状态"""
-        # 先获取当前状态（切换前）
-        was_running = self.proxy_server.runner is not None
         # 使用回调函数，由主线程的事件循环处理
         self.on_toggle_service()
         # 延迟更新菜单，等待服务状态改变
@@ -385,9 +382,9 @@ class TrayManager:
     def _toggle_auto_start(self):
         """切换开机自启"""
         if self._autostart_manager.is_enabled():
-            success = self._autostart_manager.disable()
+            self._autostart_manager.disable()
         else:
-            success = self._autostart_manager.enable()
+            self._autostart_manager.enable()
 
         # 无论成功与否，重新查询实际状态以保持同步
         self._auto_start = self._autostart_manager.is_enabled()

@@ -1,8 +1,5 @@
 """配置模块测试"""
-import pytest
 from pathlib import Path
-import tempfile
-import yaml
 
 from src.config import Config, RetryRule, Upstream, Route, load_config
 

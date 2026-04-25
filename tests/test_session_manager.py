@@ -1,6 +1,5 @@
 # tests/test_session_manager.py
 """会话管理模块测试"""
-import pytest
 import time
 from src.session_manager import Session, SessionManager
 

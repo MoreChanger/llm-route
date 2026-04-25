@@ -45,3 +45,6 @@ htmlcov/
 # Runtime
 .llm-route.lock
 logs/
+
+# Compound Engineering local config
+.compound-engineering/*.local.yaml

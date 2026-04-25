@@ -7,7 +7,6 @@ from unittest.mock import patch, MagicMock
 from src.platform import (
     is_docker_environment,
     has_display_service,
-    has_clipboard,
     has_appindicator,
     get_platform_level,
     get_platform_info,

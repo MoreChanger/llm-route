@@ -1,7 +1,6 @@
 """端口检测与分配模块"""
 import socket
 import random
-from typing import Optional
 
 
 def is_port_available(host: str, port: int) -> bool:

@@ -81,7 +81,7 @@ class SingleInstanceLock:
                 # 锁文件损坏，删除它
                 try:
                     self._lock_path.unlink()
-                except:
+                except Exception:
                     pass
 
         # 创建锁文件
@@ -99,7 +99,7 @@ class SingleInstanceLock:
         if self._lock_path and self._lock_path.exists():
             try:
                 self._lock_path.unlink()
-            except:
+            except Exception:
                 pass
 
     def __enter__(self):

@@ -4,12 +4,10 @@ import sys
 import subprocess
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch, MagicMock
 
 from src.autostart import (
     AutoStartManager,
-    UnsupportedPlatformError,
-    _AutoStartImpl,
     _WindowsAutoStart,
     _LinuxAutoStart,
     _MacOSAutoStart,

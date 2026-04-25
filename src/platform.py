@@ -95,7 +95,7 @@ def has_appindicator() -> bool:
         # 尝试 AppIndicator3
         try:
             gi.require_version('AppIndicator3', '0.1')
-            from gi.repository import AppIndicator3
+            from gi.repository import AppIndicator3  # noqa: F401
             return True
         except (ValueError, ImportError):
             pass
@@ -103,7 +103,7 @@ def has_appindicator() -> bool:
         # 尝试 AyatanaAppIndicator3
         try:
             gi.require_version('AyatanaAppIndicator3', '0.1')
-            from gi.repository import AyatanaAppIndicator3
+            from gi.repository import AyatanaAppIndicator3  # noqa: F401
             return True
         except (ValueError, ImportError):
             pass
