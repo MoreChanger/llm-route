@@ -20,7 +20,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # ============================================
-# Stage 2a: Headless runtime (default target)
+# Stage 2: Headless runtime (default target)
 # Minimal image for API routing only
 # ============================================
 FROM python:3.11-slim AS headless
@@ -60,52 +60,3 @@ USER llmroute
 # Entrypoint
 ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["--headless"]
-
-# ============================================
-# Stage 2b: Full runtime with GUI dependencies
-# Supports system tray when X11 is forwarded
-# ============================================
-FROM python:3.11-slim AS full
-
-WORKDIR /app
-
-# Install GUI dependencies for pystray (Linux)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gir1.2-appindicator3-0.1 \
-    gir1.2-ayatanaappindicator3-0.1 \
-    libgirepository1.0-dev \
-    x11-utils \
-    xclip \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create non-root user
-RUN useradd -m -u 1000 llmroute && \
-    chown -R llmroute:llmroute /app
-
-# Copy installed packages from builder
-COPY --from=builder /install /usr/local
-
-# Copy application code
-COPY --chown=llmroute:llmroute src/ ./src/
-COPY --chown=llmroute:llmroute config.yaml .
-COPY --chown=llmroute:llmroute presets/ ./presets/
-
-# Copy entrypoint script
-COPY --chown=llmroute:llmroute docker-entrypoint.sh .
-RUN chmod +x docker-entrypoint.sh
-
-# Environment variables
-ENV PYTHONUNBUFFERED=1
-
-# Expose default port
-EXPOSE 8087
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8087/health')" || exit 1
-
-# Switch to non-root user
-USER llmroute
-
-# Entrypoint
-ENTRYPOINT ["./docker-entrypoint.sh"]

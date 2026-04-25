@@ -38,6 +38,8 @@ LLM-ROUTE 会自动检测平台能力并进行降级：
 - **Level 2（托盘降级）**：托盘可用，但剪贴板/对话框不可用
 - **Level 3（完全 headless）**：无 GUI，仅 API 代理功能
 
+**Docker 部署** 提供 Web 管理界面，可通过浏览器访问 `http://<容器IP>:8087/_admin` 进行管理。
+
 ## 快速开始
 
 ### 1. 配置
@@ -135,9 +137,11 @@ docker build -t llm-route .
 docker run -d \
   --name llm-route \
   -p 8087:8087 \
-  -v $(pwd)/config.yaml:/app/config.yaml:ro \
+  -v $(pwd)/config.yaml:/app/config.yaml \
   llm-route
 ```
+
+> **注意**：配置文件挂载不再使用 `:ro` 标志，以支持 Web 管理界面的配置编辑功能。
 
 **使用 Docker Compose：**
 
@@ -150,6 +154,35 @@ docker compose logs -f
 
 # 停止
 docker compose down
+```
+
+**Web 管理界面：**
+
+Docker 容器启动后，可通过浏览器访问 `http://<容器IP>:8087/_admin` 进行管理：
+
+- 查看服务状态（运行状态、端口、运行时间）
+- 启动/停止服务
+- 查看日志（分页、级别过滤、自动刷新）
+- 切换配置预设
+- 修改配置（端口、日志等级）
+
+> **安全提示**：
+> - 首次使用前请配置密码（见下方"配置管理员密码"）
+> - 绑定 0.0.0.0 会同时暴露代理 API（无认证）和管理界面（需密码）
+> - 建议在可信网络中使用，或通过反向代理添加 TLS
+
+**配置管理员密码：**
+
+1. 生成密码哈希：
+
+```bash
+python -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt()).decode())"
+```
+
+2. 在 `config.yaml` 中添加：
+
+```yaml
+admin_password_hash: $2b$12$...  # 上一步生成的哈希值
 ```
 
 **Docker 环境变量：**
