@@ -60,11 +60,22 @@ jobs:
           cp README.md release/ 2>/dev/null || echo ""
           cd release && 7z a -tzip ../llm-route-${{ matrix.target }}-${{ matrix.arch }}.zip *
 
-      - name: Prepare release package (macOS/Linux)
-        if: runner.os != 'Windows'
+      - name: Prepare release package (macOS)
+        if: runner.os == 'macOS'
         run: |
           mkdir -p release
-          cp dist/llm-route${{ matrix.ext }} release/
+          # macOS 生成 .app 目录
+          cp -r dist/LLM-ROUTE.app release/
+          cp config.yaml release/
+          cp -r presets release/ 2>/dev/null || mkdir -p release/presets
+          cp README.md release/ 2>/dev/null || echo ""
+          cd release && zip -r ../llm-route-${{ matrix.target }}-${{ matrix.arch }}.zip *
+
+      - name: Prepare release package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p release
+          cp dist/llm-route release/
           cp config.yaml release/
           cp -r presets release/ 2>/dev/null || mkdir -p release/presets
           cp README.md release/ 2>/dev/null || echo ""
