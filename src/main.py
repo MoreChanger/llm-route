@@ -11,7 +11,6 @@ from typing import Optional
 from src.config import load_config, save_config
 from src.port import find_available_port, random_available_port, is_port_available
 from src.proxy import ProxyServer
-from src.tray import TrayManager
 from src.log_file import LogManager
 from src.single_instance import SingleInstanceLock
 from src.platform import is_docker_environment, get_platform_level
@@ -121,6 +120,9 @@ async def run_with_tray(server: ProxyServer, log_manager: LogManager, config_pat
     启动服务并显示系统托盘。
     托盘支持启动/停止服务、更换端口、查看日志等功能。
     """
+    # 延迟导入 TrayManager，避免在 headless 模式下导入 pystray
+    from src.tray import TrayManager
+
     await server.start()
 
     loop = asyncio.get_event_loop()
