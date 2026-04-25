@@ -329,3 +329,41 @@ class TestConfigSaveClearsPreset(AioHTTPTestCase):
         assert resp.status == 200
         data = await resp.json()
         assert data["current_preset"] == "test-preset"
+
+
+class TestPresetPreviewAPI(AioHTTPTestCase):
+    """测试预设预览 API"""
+
+    async def get_application(self):
+        """创建测试应用"""
+        self.mock_proxy = MagicMock()
+        self.mock_proxy.runner = None
+        self.mock_proxy.config = Config()
+
+        self.mock_log_manager = MagicMock()
+        self.mock_log_manager.get_logs_page.return_value = ([], 1, 0)
+
+        self.password_hash = generate_password_hash("test_password")
+        self.auth_manager = AdminAuthManager(password_hash=self.password_hash)
+
+        self.handler = WebAdminHandler(
+            proxy_server=self.mock_proxy,
+            auth_manager=self.auth_manager,
+            log_manager=self.mock_log_manager,
+            config_path="config.yaml",
+        )
+
+        app = web.Application()
+        self.handler.setup_routes(app)
+        return app
+
+    async def test_preview_api_requires_auth(self):
+        """测试预览 API 需要认证"""
+        resp = await self.client.get("/_admin/api/presets/preview?name=test-preset")
+        assert resp.status == 401
+
+    async def test_preview_api_missing_name(self):
+        """测试缺少预设名称"""
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+        resp = await self.client.get("/_admin/api/presets/preview")
+        assert resp.status == 400

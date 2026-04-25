@@ -1091,6 +1091,9 @@ class WebAdminHandler:
         app.router.add_get(
             "/_admin/api/presets", self.require_auth(self.handle_presets)
         )
+        app.router.add_get(
+            "/_admin/api/presets/preview", self.require_auth(self.handle_preset_preview)
+        )
         app.router.add_post(
             "/_admin/api/presets/apply", self.require_auth(self.handle_preset_apply)
         )
@@ -1269,6 +1272,64 @@ class WebAdminHandler:
             "presets": preset_list,
             "current_preset": current_preset
         })
+
+    async def handle_preset_preview(self, request: web.Request) -> web.Response:
+        """返回预设预览内容"""
+        preset_name = request.query.get("name", "")
+        if not preset_name:
+            return web.json_response({"error": "Missing preset name"}, status=400)
+
+        # 查找预设
+        presets = list_presets()
+        preset_path = None
+        for name, path in presets:
+            if name == preset_name:
+                preset_path = path
+                break
+
+        if not preset_path:
+            return web.json_response({"error": "Preset not found"}, status=404)
+
+        # 读取预设内容
+        try:
+            import yaml
+            with open(preset_path, "r", encoding="utf-8") as f:
+                preset_data = yaml.safe_load(f) or {}
+
+            # 构建预览数据
+            upstreams = []
+            for name, upstream in (preset_data.get("upstreams") or {}).items():
+                upstreams.append({
+                    "name": name,
+                    "url": upstream.get("url", ""),
+                    "protocol": upstream.get("protocol", "anthropic"),
+                    "convert_responses": upstream.get("convert_responses", False),
+                })
+
+            routes = []
+            for route in (preset_data.get("routes") or []):
+                routes.append({
+                    "path": route.get("path", ""),
+                    "upstream": route.get("upstream", ""),
+                })
+
+            retry_rules = []
+            for rule in (preset_data.get("retry_rules") or []):
+                retry_rules.append({
+                    "status": rule.get("status"),
+                    "max_retries": rule.get("max_retries", 10),
+                    "delay": rule.get("delay", 2.0),
+                    "body_contains": rule.get("body_contains"),
+                })
+
+            return web.json_response({
+                "name": preset_name,
+                "upstreams": upstreams,
+                "routes": routes,
+                "retry_rules": retry_rules,
+            })
+        except Exception as e:
+            return web.json_response({"error": f"Failed to read preset: {str(e)}"}, status=500)
 
     async def handle_preset_apply(self, request: web.Request) -> web.Response:
         """应用预设"""
