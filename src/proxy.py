@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 import logging
 
 import aiohttp
@@ -16,6 +16,9 @@ from src.log_file import LogManager
 from src.responses_converter import ResponsesConverter
 from src.session_manager import SessionManager
 from src.responses_models import ResponsesRequest
+
+if TYPE_CHECKING:
+    from src.web_admin import WebAdminHandler
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -57,9 +60,15 @@ def match_route(path: str, routes: list[Route]) -> Optional[Route]:
 class ProxyServer:
     """HTTP 代理服务器"""
 
-    def __init__(self, config: Config, log_manager: LogManager):
+    def __init__(
+        self,
+        config: Config,
+        log_manager: LogManager,
+        web_admin_handler: Optional["WebAdminHandler"] = None,
+    ):
         self.config = config
         self.log_manager = log_manager
+        self.web_admin_handler = web_admin_handler
         self.app: Optional[web.Application] = None
         self.runner: Optional[web.AppRunner] = None
         self.site: Optional[web.TCPSite] = None
@@ -87,8 +96,15 @@ class ProxyServer:
         """启动代理服务器"""
         # 创建 aiohttp 应用
         self.app = web.Application()
+
         # 添加健康检查端点（必须在 catch-all 路由之前）
         self.app.router.add_get("/health", self.handle_health)
+
+        # 注册 Web 管理界面路由（必须在 catch-all 路由之前）
+        if self.web_admin_handler:
+            self.web_admin_handler.setup_routes(self.app)
+
+        # 添加 catch-all 路由（必须最后添加）
         self.app.router.add_route("*", "/{path:.*}", self.handle_request)
 
         # 创建 HTTP 客户端会话（设置超时）

@@ -1,11 +1,55 @@
 """日志文件管理模块"""
 
+import re
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 import threading
+
+
+# 敏感头字段列表（小写）
+SENSITIVE_HEADERS = {"authorization", "x-api-key"}
+
+
+def sanitize_sensitive_content(content: str) -> str:
+    """过滤敏感头字段值
+
+    将 Authorization 和 x-api-key 头字段的值替换为 [REDACTED]。
+
+    Args:
+        content: 原始内容字符串
+
+    Returns:
+        过滤后的内容字符串
+    """
+    if not content:
+        return content
+
+    # 匹配 JSON 格式的敏感头
+    # "Authorization": "Bearer xxx" 或 "x-api-key": "xxx"
+    def redact_json_header(match: re.Match) -> str:
+        header_name = match.group(1)
+        return f'"{header_name}": "[REDACTED]"'
+
+    # JSON 格式（带引号）
+    json_pattern = r'"(authorization|x-api-key)":\s*"[^"]*"'
+    result = re.sub(json_pattern, redact_json_header, content, flags=re.IGNORECASE)
+
+    # 匹配 HTTP 头格式
+    # Authorization: Bearer xxx 或 x-api-key: xxx
+    def redact_http_header(match: re.Match) -> str:
+        header_name = match.group(1)
+        return f"{header_name}: [REDACTED]"
+
+    # HTTP 头格式（可能在日志中出现）
+    # 匹配整个值部分（冒号后到行尾或下一个结构符号）
+    # 使用单词边界确保只匹配完整的头字段名
+    http_pattern = r'\b(Authorization|x-api-key):\s*[^\n\]\[{}"]+'
+    result = re.sub(http_pattern, redact_http_header, result, flags=re.IGNORECASE)
+
+    return result
 
 
 class LogManager:
@@ -122,6 +166,10 @@ class LogManager:
             request_body: 请求体
             response_body: 响应体
         """
+        # 过滤敏感头字段
+        request_body = sanitize_sensitive_content(request_body)
+        response_body = sanitize_sensitive_content(response_body)
+
         if self._log_level == 1:
             # 基础信息
             self.log(f"{method} {path} -> {upstream} [{status_code}]")

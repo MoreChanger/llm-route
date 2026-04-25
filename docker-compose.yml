@@ -13,8 +13,8 @@ services:
     ports:
       - "${LLM_ROUTE_PORT:-8087}:8087"
     volumes:
-      # Persist configuration
-      - ./config.yaml:/app/config.yaml:ro
+      # Persist configuration (writable for web admin config editing)
+      - ./config.yaml:/app/config.yaml
       # Persist logs
       - llm-route-logs:/app/logs
       # Persist presets (optional)
@@ -29,32 +29,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
-
-  # Full mode with GUI support (requires X11 forwarding)
-  llm-route-gui:
-    build:
-      context: .
-      target: full
-    image: llm-route:full
-    container_name: llm-route-gui
-    restart: unless-stopped
-    ports:
-      - "${LLM_ROUTE_PORT:-8087}:8087"
-    volumes:
-      # Persist configuration
-      - ./config.yaml:/app/config.yaml:ro
-      # Persist logs
-      - llm-route-logs:/app/logs
-      # Persist presets (optional)
-      - ./presets:/app/presets:ro
-      # X11 socket for GUI (Linux only)
-      - /tmp/.X11-unix:/tmp/.X11-unix:ro
-    environment:
-      - LLM_ROUTE_PORT=${LLM_ROUTE_PORT:-8087}
-      - LLM_ROUTE_LOG_LEVEL=${LLM_ROUTE_LOG_LEVEL:-1}
-      - DISPLAY=${DISPLAY}
-    profiles:
-      - gui
 
 volumes:
   llm-route-logs:

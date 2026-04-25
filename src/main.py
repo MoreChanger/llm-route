@@ -4,7 +4,9 @@ import argparse
 import asyncio
 import signal
 import sys
+import time
 from pathlib import Path
+from typing import Optional
 
 from src.config import load_config, save_config
 from src.port import find_available_port, random_available_port, is_port_available
@@ -13,6 +15,8 @@ from src.tray import TrayManager
 from src.log_file import LogManager
 from src.single_instance import SingleInstanceLock
 from src.platform import is_docker_environment, get_platform_level
+from src.auth import AdminAuthManager
+from src.web_admin import WebAdminHandler
 
 
 def safe_print(message: str):
@@ -74,7 +78,10 @@ def get_config_path(args) -> str:
 
 
 async def run_headless(
-    server: ProxyServer, log_manager: LogManager, shutdown_event: asyncio.Event
+    server: ProxyServer,
+    log_manager: LogManager,
+    shutdown_event: asyncio.Event,
+    web_admin_handler: Optional[WebAdminHandler] = None,
 ):
     """无头模式运行
 
@@ -82,8 +89,23 @@ async def run_headless(
     通过 Ctrl+C 或 SIGTERM 停止服务。
     """
     try:
+        # 设置启动时间
+        if web_admin_handler:
+            web_admin_handler.set_start_time(time.time())
+
         await server.start()
         safe_print(f"服务运行中，监听 {server.config.host}:{server.config.port}")
+
+        # 提示 Web 管理界面地址
+        if web_admin_handler and web_admin_handler.auth_manager.has_password():
+            safe_print(
+                f"Web 管理界面: http://{server.config.host}:{server.config.port}/_admin"
+            )
+        elif web_admin_handler:
+            safe_print(
+                f"Web 管理界面: http://{server.config.host}:{server.config.port}/_admin (未设置密码)"
+            )
+
         safe_print("按 Ctrl+C 停止服务...")
         # 等待关闭信号
         await shutdown_event.wait()
@@ -249,8 +271,24 @@ def main():
         log_path = log_manager.start(config.log_level)
         safe_print(f"日志文件: {log_path}")
 
+        # 创建认证管理器（Docker 环境）
+        auth_manager = None
+        web_admin_handler = None
+        if in_docker or headless:
+            auth_manager = AdminAuthManager(config.admin_password_hash)
+            web_admin_handler = WebAdminHandler(
+                proxy_server=None,  # 稍后设置
+                auth_manager=auth_manager,
+                log_manager=log_manager,
+                config_path=config_path,
+            )
+
         # 创建代理服务器
-        server = ProxyServer(config, log_manager)
+        server = ProxyServer(config, log_manager, web_admin_handler)
+
+        # 设置 web_admin_handler 的 proxy_server 引用
+        if web_admin_handler:
+            web_admin_handler.proxy_server = server
 
         # 使用 Event 来协调优雅关闭
         shutdown_event = None
@@ -269,7 +307,9 @@ def main():
         # 运行
         if headless:
             shutdown_event = asyncio.Event()
-            asyncio.run(run_headless(server, log_manager, shutdown_event))
+            asyncio.run(
+                run_headless(server, log_manager, shutdown_event, web_admin_handler)
+            )
         else:
             asyncio.run(run_with_tray(server, log_manager, config_path))
     except Exception:

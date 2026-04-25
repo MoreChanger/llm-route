@@ -34,6 +34,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-asyncio pytest-cov
+          # Uninstall aiodns to avoid Python 3.12 compatibility issues
+          pip uninstall -y aiodns pycares || true
 
       - name: Run tests on Linux with virtual display
         if: runner.os == 'Linux'

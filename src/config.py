@@ -44,6 +44,7 @@ class Config:
     host: str = "127.0.0.1"
     port: Union[int, str] = 8087  # int 或 "auto"
     log_level: int = 2  # 1=基础, 2=详细, 3=完整
+    admin_password_hash: Optional[str] = None  # bcrypt 哈希的管理员密码
     upstreams: dict[str, Upstream] = field(default_factory=dict)
     routes: list[Route] = field(default_factory=list)
     retry_rules: list[RetryRule] = field(default_factory=list)
@@ -163,6 +164,7 @@ def load_config(config_path: str) -> Config:
     config.host = data.get("host", "127.0.0.1")
     config.port = data.get("port", 8087)
     config.log_level = data.get("log_level", 2)
+    config.admin_password_hash = data.get("admin_password_hash")
 
     # 加载上游配置
     upstreams_data = data.get("upstreams", {})
@@ -223,6 +225,8 @@ def save_config(config: Config, config_path: str):
     data["host"] = config.host
     data["port"] = config.port
     data["log_level"] = config.log_level
+    if config.admin_password_hash is not None:
+        data["admin_password_hash"] = config.admin_password_hash
 
     # 写回文件
     with open(path, "w", encoding="utf-8") as f:
