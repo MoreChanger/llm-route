@@ -128,6 +128,7 @@ class TestAutoStartImpl:
 class TestWindowsAutoStart:
     """测试 _WindowsAutoStart 类"""
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="仅 Windows 平台测试")
     def test_enable_success(self):
         """测试启用成功"""
         impl = _WindowsAutoStart("TestApp")
@@ -139,6 +140,7 @@ class TestWindowsAutoStart:
                     result = impl.enable()
                     assert result is True
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="仅 Windows 平台测试")
     def test_enable_failure(self):
         """测试启用失败"""
         impl = _WindowsAutoStart("TestApp")
@@ -147,6 +149,7 @@ class TestWindowsAutoStart:
             result = impl.enable()
             assert result is False
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="仅 Windows 平台测试")
     def test_disable_success(self):
         """测试禁用成功"""
         impl = _WindowsAutoStart("TestApp")
@@ -158,6 +161,7 @@ class TestWindowsAutoStart:
                     result = impl.disable()
                     assert result is True
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="仅 Windows 平台测试")
     def test_disable_key_not_exists(self):
         """测试禁用时键不存在"""
         impl = _WindowsAutoStart("TestApp")
@@ -169,6 +173,7 @@ class TestWindowsAutoStart:
                     result = impl.disable()
                     assert result is True  # 键不存在视为成功
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="仅 Windows 平台测试")
     def test_is_enabled_true(self):
         """测试已启用"""
         impl = _WindowsAutoStart("TestApp")
@@ -180,6 +185,7 @@ class TestWindowsAutoStart:
                     result = impl.is_enabled()
                     assert result is True
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="仅 Windows 平台测试")
     def test_is_enabled_false(self):
         """测试未启用"""
         impl = _WindowsAutoStart("TestApp")
