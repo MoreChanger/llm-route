@@ -83,14 +83,25 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 if current_system == "Darwin":
     # macOS: Create .app bundle
-    coll = COLLECT(
+    exe = EXE(
         pyz,
         a.scripts,
+        exclude_binaries=True,
+        name='llm-route',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        console=True,
+        icon=icon_path,
+    )
+    coll = COLLECT(
+        exe,
         a.binaries,
         a.zipfiles,
         a.datas,
         strip=False,
-        upx=True,
+        upx=False,
         upx_exclude=[],
         name='llm-route',
     )

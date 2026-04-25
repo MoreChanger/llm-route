@@ -51,6 +51,7 @@ jobs:
 
       - name: Prepare release package (Windows)
         if: runner.os == 'Windows'
+        shell: bash
         run: |
           mkdir -p release
           cp dist/llm-route.exe release/
