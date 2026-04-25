@@ -3,10 +3,11 @@
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 import threading
+import glob
 
 
 # 敏感头字段列表（小写）
@@ -60,6 +61,7 @@ class LogManager:
         self._log_path: Optional[Path] = None
         self._lock = threading.Lock()
         self._log_level: int = 2  # 默认详细信息
+        self._log_retention_days: int = 7  # 默认保留7天
         self._line_count: int = 0  # 当前行数
 
     def get_logs_dir(self) -> Path:
@@ -73,16 +75,18 @@ class LogManager:
             base_dir = Path(__file__).parent.parent
         return base_dir / "logs"
 
-    def start(self, log_level: int = 2) -> Path:
+    def start(self, log_level: int = 2, log_retention_days: int = 7) -> Path:
         """启动日志管理器
 
         Args:
             log_level: 日志等级
+            log_retention_days: 日志保留天数
 
         Returns:
             日志文件路径
         """
         self._log_level = log_level
+        self._log_retention_days = log_retention_days
 
         # 创建日志目录
         logs_dir = self.get_logs_dir()
@@ -94,7 +98,46 @@ class LogManager:
         self._log_file = open(self._log_path, "w", encoding="utf-8")
         self._line_count = 0
 
+        # 清理过期日志
+        self._cleanup_old_logs()
+
         return self._log_path
+
+    def _cleanup_old_logs(self):
+        """清理过期的日志文件"""
+        if self._log_retention_days <= 0:
+            return  # 0 表示永不过期
+
+        logs_dir = self.get_logs_dir()
+        if not logs_dir.exists():
+            return
+
+        # 计算截止日期
+        cutoff_date = datetime.now() - timedelta(days=self._log_retention_days)
+
+        # 查找所有日志文件
+        log_files = list(logs_dir.glob("*.log"))
+
+        for log_file in log_files:
+            # 跳过当前日志文件
+            if self._log_path and log_file == self._log_path:
+                continue
+
+            try:
+                # 从文件名解析日期 (格式: YYYY-MM-DD_HH-MM-SS.log)
+                filename = log_file.stem
+                file_date = datetime.strptime(filename, "%Y-%m-%d_%H-%M-%S")
+
+                # 删除过期文件
+                if file_date < cutoff_date:
+                    log_file.unlink()
+                    try:
+                        print(f"已清理过期日志: {log_file.name}")
+                    except (UnicodeEncodeError, OSError):
+                        pass
+            except (ValueError, OSError):
+                # 文件名格式不匹配或删除失败，跳过
+                pass
 
     def stop(self):
         """停止日志管理器"""

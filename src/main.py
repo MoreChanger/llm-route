@@ -270,7 +270,7 @@ def main():
 
         # 创建日志管理器
         log_manager = LogManager()
-        log_path = log_manager.start(config.log_level)
+        log_path = log_manager.start(config.log_level, config.log_retention_days)
         safe_print(f"日志文件: {log_path}")
 
         # 创建认证管理器（Docker 环境）

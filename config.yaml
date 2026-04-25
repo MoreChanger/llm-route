@@ -1,6 +1,7 @@
 host: 0.0.0.0
 port: 8087
 log_level: 2
+log_retention_days: 7
 # Web 管理界面密码
 # 默认密码为 123456，首次登录后建议修改
 admin_password: "123456"

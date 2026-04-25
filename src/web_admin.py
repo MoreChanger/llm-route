@@ -511,6 +511,11 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
                             <option value="3">完整信息</option>
                         </select>
                     </div>
+                    <div class="form-group">
+                        <label for="configLogRetention">日志保留天数</label>
+                        <input type="number" id="configLogRetention" min="0" max="365" placeholder="7">
+                        <div style="font-size:12px;color:#888;margin-top:4px;">0 表示永久保留</div>
+                    </div>
                     <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
                     <div class="notice">⚠️ 配置修改后需要重启容器才能生效</div>
                 </div>
@@ -767,6 +772,7 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
                 const data = await resp.json();
                 document.getElementById('configPort').value = data.port || 8087;
                 document.getElementById('configLogLevel').value = data.log_level || 2;
+                document.getElementById('configLogRetention').value = data.log_retention_days || 7;
                 renderConfigView(data);
             } catch (e) {
                 console.error('加载配置失败:', e);
@@ -845,9 +851,15 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
         async function saveConfig() {
             const port = parseInt(document.getElementById('configPort').value);
             const logLevel = parseInt(document.getElementById('configLogLevel').value);
+            const logRetention = parseInt(document.getElementById('configLogRetention').value);
 
             if (!port || port < 1 || port > 65535) {
                 alert('请输入有效的端口号 (1-65535)');
+                return;
+            }
+
+            if (isNaN(logRetention) || logRetention < 0 || logRetention > 365) {
+                alert('日志保留天数必须在 0-365 之间');
                 return;
             }
 
@@ -856,7 +868,7 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
                 const resp = await api('/config', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({port, log_level: logLevel})
+                    body: JSON.stringify({port, log_level: logLevel, log_retention_days: logRetention})
                 });
                 const data = await resp.json();
                 if (resp.ok) {
@@ -1235,6 +1247,7 @@ class WebAdminHandler:
             {
                 "port": config.port,
                 "log_level": config.log_level,
+                "log_retention_days": config.log_retention_days,
                 "host": config.host,
                 "upstreams": upstreams,
                 "routes": routes,
@@ -1265,11 +1278,21 @@ class WebAdminHandler:
                 config.log_level = level
                 self.log_manager.set_level(level)
 
+        if "log_retention_days" in data:
+            retention = data["log_retention_days"]
+            if isinstance(retention, int) and 0 <= retention <= 365:
+                config.log_retention_days = retention
+
         # 保存到文件
         try:
             save_config(config, self.config_path)
             return web.json_response(
-                {"success": True, "port": config.port, "log_level": config.log_level}
+                {
+                    "success": True,
+                    "port": config.port,
+                    "log_level": config.log_level,
+                    "log_retention_days": config.log_retention_days,
+                }
             )
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
