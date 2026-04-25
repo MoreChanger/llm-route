@@ -1353,6 +1353,9 @@ class WebAdminHandler:
 
         config = self.proxy_server.config
 
+        # 用户手动修改配置，清除预设标记
+        config._active_preset = None
+
         # 更新配置
         if "port" in data:
             port = data["port"]

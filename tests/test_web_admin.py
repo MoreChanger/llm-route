@@ -228,3 +228,70 @@ class TestWebAdminNoPassword(AioHTTPTestCase):
         """测试无密码时允许访问"""
         resp = await self.client.get("/_admin/api/status")
         assert resp.status == 200
+
+
+class TestConfigSaveClearsPreset(AioHTTPTestCase):
+    """测试保存配置时清除预设标记"""
+
+    async def get_application(self):
+        """创建测试应用"""
+        self.mock_proxy = MagicMock()
+        self.mock_proxy.runner = None
+        self.mock_proxy.config = Config()
+        self.mock_proxy.config._active_preset = "test-preset"  # 设置预设标记
+        self.mock_proxy.start = AsyncMock()
+        self.mock_proxy.stop = AsyncMock()
+
+        self.mock_log_manager = MagicMock()
+        self.mock_log_manager.get_logs_page.return_value = ([], 1, 0)
+        self.mock_log_manager.set_level = MagicMock()
+
+        self.password_hash = generate_password_hash("test_password")
+        self.auth_manager = AdminAuthManager(password_hash=self.password_hash)
+
+        # 使用临时文件
+        import tempfile
+        self.temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
+        self.temp_file.write("host: 127.0.0.1\nport: 8087\n")
+        self.temp_file.close()
+
+        self.handler = WebAdminHandler(
+            proxy_server=self.mock_proxy,
+            auth_manager=self.auth_manager,
+            log_manager=self.mock_log_manager,
+            config_path=self.temp_file.name,
+        )
+
+        app = web.Application()
+        self.handler.setup_routes(app)
+        return app
+
+    async def test_config_save_clears_active_preset(self):
+        """测试保存配置时清除预设标记"""
+        # 先登录
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+
+        # 保存配置（修改端口）
+        resp = await self.client.post(
+            "/_admin/api/config",
+            json={"port": 9000}
+        )
+        assert resp.status == 200
+
+        # 验证预设标记被清除
+        assert self.mock_proxy.config._active_preset is None
+
+    async def test_config_save_clears_preset_on_log_level_change(self):
+        """测试修改日志等级时清除预设标记"""
+        # 先登录
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+
+        # 保存配置（修改日志等级）
+        resp = await self.client.post(
+            "/_admin/api/config",
+            json={"log_level": 3}
+        )
+        assert resp.status == 200
+
+        # 验证预设标记被清除
+        assert self.mock_proxy.config._active_preset is None
