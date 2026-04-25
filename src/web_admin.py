@@ -1173,6 +1173,6 @@ class WebAdminHandler:
         if save_failed:
             return web.json_response({
                 "success": True,
-                "warning": "密码已修改，但无法保存到配置文件。重启容器后需要重新设置密码。"
+                "warning": "密码已修改，但无法保存到配置文件。\n\n解决方法：在宿主机执行 chmod 666 config.yaml\n\n重启容器后需要重新设置密码。"
             })
         return web.json_response({"success": True})
