@@ -1,6 +1,8 @@
 """系统托盘模块"""
 
+import logging
 import threading
+from concurrent.futures import Future
 from typing import Callable, Optional
 
 import pystray
@@ -9,6 +11,11 @@ from PIL import Image, ImageDraw
 from src.log_window import show_log_window
 from src.autostart import AutoStartManager
 from src.platform import get_platform_level
+
+logger = logging.getLogger(__name__)
+
+# 服务切换操作的超时时间（秒）
+SERVICE_TOGGLE_TIMEOUT = 10.0
 
 
 class TrayManager:
@@ -291,14 +298,14 @@ class TrayManager:
         """
         result = self.on_toggle_service()
 
-        # 检查是否返回了 Future
-        if result is not None and hasattr(result, "result"):
-            # Future 对象，等待操作完成（最多 10 秒）
+        # 检查是否返回了 Future 对象
+        if isinstance(result, Future):
+            # Future 对象，等待操作完成
             def wait_and_update():
                 try:
-                    result.result(timeout=10.0)
-                except Exception:
-                    pass  # 超时或异常，仍需更新菜单
+                    result.result(timeout=SERVICE_TOGGLE_TIMEOUT)
+                except Exception as e:
+                    logger.warning("服务切换操作异常: %s", e)
                 finally:
                     self._update_menu()
 
