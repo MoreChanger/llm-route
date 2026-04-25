@@ -1255,12 +1255,20 @@ class WebAdminHandler:
     async def handle_presets(self, request: web.Request) -> web.Response:
         """返回可用预设列表"""
         presets = list_presets()
+        current_preset = self.proxy_server.config._active_preset
 
         preset_list = []
         for name, path in presets:
-            preset_list.append({"name": name, "path": str(path), "current": False})
+            preset_list.append({
+                "name": name,
+                "path": str(path),
+                "current": name == current_preset
+            })
 
-        return web.json_response({"presets": preset_list})
+        return web.json_response({
+            "presets": preset_list,
+            "current_preset": current_preset
+        })
 
     async def handle_preset_apply(self, request: web.Request) -> web.Response:
         """应用预设"""

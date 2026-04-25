@@ -238,7 +238,7 @@ class TestConfigSaveClearsPreset(AioHTTPTestCase):
         self.mock_proxy = MagicMock()
         self.mock_proxy.runner = None
         self.mock_proxy.config = Config()
-        self.mock_proxy.config._active_preset = "test-preset"  # 设置预设标记
+        # 不在这里设置预设标记，让每个测试自己设置
         self.mock_proxy.start = AsyncMock()
         self.mock_proxy.stop = AsyncMock()
 
@@ -268,6 +268,9 @@ class TestConfigSaveClearsPreset(AioHTTPTestCase):
 
     async def test_config_save_clears_active_preset(self):
         """测试保存配置时清除预设标记"""
+        # 设置预设标记
+        self.mock_proxy.config._active_preset = "test-preset"
+
         # 先登录
         await self.client.post("/_admin/api/login", json={"password": "test_password"})
 
@@ -283,6 +286,9 @@ class TestConfigSaveClearsPreset(AioHTTPTestCase):
 
     async def test_config_save_clears_preset_on_log_level_change(self):
         """测试修改日志等级时清除预设标记"""
+        # 设置预设标记
+        self.mock_proxy.config._active_preset = "test-preset"
+
         # 先登录
         await self.client.post("/_admin/api/login", json={"password": "test_password"})
 
@@ -295,3 +301,31 @@ class TestConfigSaveClearsPreset(AioHTTPTestCase):
 
         # 验证预设标记被清除
         assert self.mock_proxy.config._active_preset is None
+
+    async def test_presets_api_returns_current_preset(self):
+        """测试预设 API 返回当前预设"""
+        # 先登录
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+
+        # 获取预设列表
+        resp = await self.client.get("/_admin/api/presets")
+        assert resp.status == 200
+        data = await resp.json()
+        assert "presets" in data
+        assert "current_preset" in data
+        # 当前没有设置预设，应该是 None
+        assert data["current_preset"] is None
+
+    async def test_presets_api_shows_current_marker(self):
+        """测试预设列表显示当前预设标记"""
+        # 设置当前预设
+        self.mock_proxy.config._active_preset = "test-preset"
+
+        # 先登录
+        await self.client.post("/_admin/api/login", json={"password": "test_password"})
+
+        # 获取预设列表
+        resp = await self.client.get("/_admin/api/presets")
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["current_preset"] == "test-preset"
