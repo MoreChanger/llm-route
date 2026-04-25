@@ -959,13 +959,14 @@ DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
 
         async function confirmApplyPreset() {
             if (!pendingPresetName) return;
+            const presetName = pendingPresetName;  // 保存预设名称
             closePresetModal();
             showLoading();
             try {
                 const resp = await api('/presets/apply', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({preset: pendingPresetName})
+                    body: JSON.stringify({preset: presetName})
                 });
                 const data = await resp.json();
                 if (resp.ok) {
