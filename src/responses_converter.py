@@ -79,32 +79,47 @@ class ResponsesConverter:
             Chat Completions API 的 messages 列表
         """
         if isinstance(input_data, str):
-            return [{"role": "user", "content": input_data}]
+            if input_data:  # 非空字符串
+                return [{"role": "user", "content": input_data}]
+            return []
+
+        if not isinstance(input_data, list):
+            # 非预期类型，尝试转为字符串
+            if input_data:
+                return [{"role": "user", "content": str(input_data)}]
+            return []
 
         messages = []
         for item in input_data:
             if not isinstance(item, dict):
+                # 如果是字符串，作为用户消息处理
+                if isinstance(item, str) and item:
+                    messages.append({"role": "user", "content": item})
                 continue
 
             item_type = item.get("type")
 
             # Item 类型1: message - 包含角色和内容
             if item_type == "message":
-                messages.append(
-                    {
-                        "role": item.get("role", "user"),
-                        "content": self._extract_text_content(item.get("content", "")),
-                    }
-                )
+                content = self._extract_text_content(item.get("content", ""))
+                if content or item.get("role") == "assistant":
+                    messages.append(
+                        {
+                            "role": item.get("role", "user"),
+                            "content": content,
+                        }
+                    )
 
             # 兼容格式: {"role": "user", "content": "..."} (无 type 字段)
             elif "role" in item and "content" in item and item_type is None:
-                messages.append(
-                    {
-                        "role": item.get("role", "user"),
-                        "content": self._extract_text_content(item.get("content", "")),
-                    }
-                )
+                content = self._extract_text_content(item.get("content", ""))
+                if content:
+                    messages.append(
+                        {
+                            "role": item.get("role", "user"),
+                            "content": content,
+                        }
+                    )
 
             # Item 类型2: function_call_output - 工具调用结果
             elif item_type == "function_call_output":

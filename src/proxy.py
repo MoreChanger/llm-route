@@ -288,7 +288,7 @@ class ProxyServer:
 
                 # 检查是否需要重试
                 if self._should_retry(response.status, body, ctx.attempt):
-                    return await self._retry(ctx)
+                    return await self._retry(ctx, response.status)
 
                 # 记录请求日志
                 elapsed_ms = (time.time() - ctx.start_time) * 1000
@@ -350,15 +350,31 @@ class ProxyServer:
             return max(rule.max_retries for rule in self.config.retry_rules)
         return 0
 
-    async def _retry(self, ctx: RequestContext) -> web.Response:
-        """执行重试"""
-        # 找到匹配的重试规则
+    async def _retry(self, ctx: RequestContext, status_code: int = 0) -> web.Response:
+        """执行重试
+
+        Args:
+            ctx: 请求上下文
+            status_code: 触发重试的响应状态码（用于选择匹配的重试规则）
+        """
+        # 找到匹配的重试规则延迟
         delay = 1.0
+        jitter = 0.5
+
         for rule in self.config.retry_rules:
-            delay = max(delay, rule.delay)
+            if rule.status == status_code:
+                delay = rule.delay
+                jitter = rule.jitter
+                break
+        else:
+            # 没有匹配的规则，使用最大的延迟作为默认值
+            for rule in self.config.retry_rules:
+                if rule.delay > delay:
+                    delay = rule.delay
+                    jitter = rule.jitter
 
         # 计算延迟
-        actual_delay = calculate_delay(ctx.attempt, delay, 0.5)
+        actual_delay = calculate_delay(ctx.attempt, delay, jitter)
         await asyncio.sleep(actual_delay)
 
         # 增加尝试次数并重试
@@ -385,6 +401,14 @@ class ProxyServer:
 
     async def _forward_streaming(self, ctx: RequestContext) -> web.StreamResponse:
         """处理流式请求"""
+        # 检查请求对象是否存在
+        if ctx._request is None:
+            self.log(
+                f"{ctx.method} {ctx.path} -> 500 Internal Error: Missing request object",
+                "ERROR",
+            )
+            return web.Response(status=500, text="Internal Server Error")
+
         # 准备请求头（移除 hop-by-hop 头）
         headers = self._filter_headers(ctx.headers)
 
@@ -508,9 +532,31 @@ class ProxyServer:
         try:
             responses_req = self._parse_responses_request(ctx.body)
         except (json.JSONDecodeError, KeyError) as e:
+            self.log(f"[RESPONSES] 解析请求失败: {e}", "ERROR")
             return web.Response(status=400, text=f"Invalid request: {e}")
 
         chat_body = self.responses_converter.convert_request(responses_req)
+
+        # 验证转换后的请求体
+        if not chat_body.get("messages"):
+            self.log(
+                "[RESPONSES] 转换后 messages 为空，"
+                f"原始请求: {ctx.body.decode('utf-8', errors='ignore')[:500]}",
+                "ERROR",
+            )
+            return web.Response(
+                status=400,
+                text="Invalid request: messages is empty after conversion",
+            )
+
+        # 记录转换详情（用于调试）
+        self.log(
+            f"[RESPONSES] 转换请求: model={responses_req.model}, "
+            f"input_type={type(responses_req.input).__name__}, "
+            f"messages_count={len(chat_body.get('messages', []))}",
+            "INFO",
+        )
+
         url = f"{ctx.upstream.url}/v1/chat/completions"
         headers = self._filter_headers(ctx.headers)
         headers["Content-Type"] = "application/json"
@@ -546,7 +592,7 @@ class ProxyServer:
             ) as resp:
                 resp_body = await resp.read()
                 if self._should_retry(resp.status, resp_body, ctx.attempt):
-                    return await self._retry_responses(ctx, responses_req)
+                    return await self._retry_responses(ctx, responses_req, resp.status)
 
                 chat_resp = json.loads(resp_body)
                 responses_resp = self.responses_converter.convert_response(
@@ -590,6 +636,14 @@ class ProxyServer:
         responses_req: ResponsesRequest,
     ) -> web.StreamResponse:
         """流式：转换 SSE 流"""
+        # 检查请求对象是否存在
+        if ctx._request is None:
+            self.log(
+                f"{ctx.method} {ctx.path} -> 500 Internal Error: Missing request object",
+                "ERROR",
+            )
+            return web.Response(status=500, text="Internal Server Error")
+
         response = web.StreamResponse(
             status=200,
             headers={
@@ -695,14 +749,32 @@ class ProxyServer:
         return response
 
     async def _retry_responses(
-        self, ctx: RequestContext, responses_req: ResponsesRequest
+        self, ctx: RequestContext, responses_req: ResponsesRequest, status_code: int = 0
     ) -> web.Response:
-        """重试 Responses 请求"""
-        delay = 1.0
-        for rule in self.config.retry_rules:
-            delay = max(delay, rule.delay)
+        """重试 Responses 请求
 
-        actual_delay = calculate_delay(ctx.attempt, delay, 0.5)
+        Args:
+            ctx: 请求上下文
+            responses_req: Responses API 请求对象
+            status_code: 触发重试的响应状态码
+        """
+        # 找到匹配的重试规则延迟
+        delay = 1.0
+        jitter = 0.5
+
+        for rule in self.config.retry_rules:
+            if rule.status == status_code:
+                delay = rule.delay
+                jitter = rule.jitter
+                break
+        else:
+            # 没有匹配的规则，使用最大的延迟作为默认值
+            for rule in self.config.retry_rules:
+                if rule.delay > delay:
+                    delay = rule.delay
+                    jitter = rule.jitter
+
+        actual_delay = calculate_delay(ctx.attempt, delay, jitter)
         await asyncio.sleep(actual_delay)
 
         ctx.attempt += 1

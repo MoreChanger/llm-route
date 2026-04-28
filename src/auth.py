@@ -222,6 +222,17 @@ class AdminAuthManager:
             del self._sessions[token]
         return len(expired)
 
+    def clear_all_sessions(self) -> int:
+        """清除所有会话（用于密码修改后强制重新登录）
+
+        Returns:
+            清除的会话数量
+        """
+        with self._lock:
+            count = len(self._sessions)
+            self._sessions.clear()
+            return count
+
 
 def generate_password_hash(password: str) -> str:
     """生成 bcrypt 密码哈希
