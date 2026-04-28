@@ -540,7 +540,8 @@ class ProxyServer:
         # 验证转换后的请求体
         if not chat_body.get("messages"):
             self.log(
-                f"[RESPONSES] 转换后 messages 为空，原始请求: {ctx.body.decode('utf-8', errors='ignore')[:500]}",
+                "[RESPONSES] 转换后 messages 为空，"
+                f"原始请求: {ctx.body.decode('utf-8', errors='ignore')[:500]}",
                 "ERROR",
             )
             return web.Response(
