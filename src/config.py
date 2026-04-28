@@ -48,6 +48,7 @@ class Config:
     log_structured: bool = False  # 是否使用结构化日志 (JSON格式)
     admin_password: str = "123456"  # 明文密码，首次登录后应修改
     admin_password_hash: Optional[str] = None  # bcrypt 哈希（可选，优先使用）
+    trusted_proxies: list[str] = field(default_factory=list)  # 可信代理 IP 列表
     upstreams: dict[str, Upstream] = field(default_factory=dict)
     routes: list[Route] = field(default_factory=list)
     retry_rules: list[RetryRule] = field(default_factory=list)
@@ -195,6 +196,7 @@ def load_config(config_path: str) -> Config:
     config.log_structured = data.get("log_structured", False)
     config.admin_password = data.get("admin_password", "123456")
     config.admin_password_hash = data.get("admin_password_hash")
+    config.trusted_proxies = data.get("trusted_proxies", [])
     config._active_preset = data.get("_active_preset")
 
     # 加载上游配置
@@ -232,7 +234,14 @@ def load_config(config_path: str) -> Config:
         if env_port.lower() == "auto":
             config.port = "auto"
         else:
-            config.port = int(env_port)
+            try:
+                port_value = int(env_port)
+                if 1 <= port_value <= 65535:
+                    config.port = port_value
+                else:
+                    print(f"警告: LLM_ROUTE_PORT 值 {port_value} 超出有效范围 (1-65535)，使用默认端口")
+            except ValueError:
+                print(f"警告: LLM_ROUTE_PORT 值 '{env_port}' 不是有效的端口号，使用默认端口")
 
     return config
 

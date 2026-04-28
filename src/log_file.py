@@ -22,7 +22,20 @@ from typing import Optional, Any
 
 
 # 敏感头字段列表（小写）
-SENSITIVE_HEADERS = {"authorization", "x-api-key"}
+SENSITIVE_HEADERS = {
+    "authorization",
+    "x-api-key",
+    "cookie",
+    "set-cookie",
+    "proxy-authorization",
+    "proxy-authenticate",
+    "www-authenticate",
+    "api-key",
+    "x-auth-token",
+    "x-access-token",
+    "x-refresh-token",
+    "x-session-token",
+}
 
 # 默认配置
 DEFAULT_MAX_LOG_SIZE = 10 * 1024 * 1024  # 10MB
@@ -33,7 +46,7 @@ DEFAULT_FLUSH_INTERVAL = 1.0  # 异步写入刷新间隔（秒）
 def sanitize_sensitive_content(content: str) -> str:
     """过滤敏感头字段值
 
-    将 Authorization 和 x-api-key 头字段的值替换为 [REDACTED]。
+    将敏感头字段的值替换为 [REDACTED]。
 
     Args:
         content: 原始内容字符串
@@ -44,13 +57,16 @@ def sanitize_sensitive_content(content: str) -> str:
     if not content:
         return content
 
+    # 构建敏感头字段的正则模式（用于 JSON 和 HTTP 头格式）
+    sensitive_pattern = "|".join(SENSITIVE_HEADERS)
+
     # 匹配 JSON 格式的敏感头
     def redact_json_header(match: re.Match) -> str:
         header_name = match.group(1)
         return f'"{header_name}": "[REDACTED]"'
 
     # JSON 格式（带引号）
-    json_pattern = r'"(authorization|x-api-key)":\s*"[^"]*"'
+    json_pattern = rf'"({sensitive_pattern})":\s*"[^"]*"'
     result = re.sub(json_pattern, redact_json_header, content, flags=re.IGNORECASE)
 
     # 匹配 HTTP 头格式
@@ -59,7 +75,7 @@ def sanitize_sensitive_content(content: str) -> str:
         return f"{header_name}: [REDACTED]"
 
     # HTTP 头格式
-    http_pattern = r'\b(Authorization|x-api-key):\s*[^\n\]\[{}"]+'
+    http_pattern = rf'\b({sensitive_pattern}):\s*[^\n\]\[{{}}"]+'
     result = re.sub(http_pattern, redact_http_header, result, flags=re.IGNORECASE)
 
     return result

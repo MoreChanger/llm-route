@@ -1231,6 +1231,41 @@ class WebAdminHandler:
         """设置服务启动时间"""
         self._start_time = start_time
 
+    def get_client_ip(self, request: web.Request) -> str:
+        """获取真实的客户端 IP 地址
+
+        如果配置了可信代理，会检查 X-Forwarded-For 头。
+        否则使用直接连接的 IP。
+
+        Args:
+            request: HTTP 请求对象
+
+        Returns:
+            客户端 IP 地址
+        """
+        # 获取直接连接的 IP
+        direct_ip = request.remote or "unknown"
+
+        # 如果没有配置可信代理，直接使用连接 IP
+        trusted_proxies = self.proxy_server.config.trusted_proxies if self.proxy_server else []
+        if not trusted_proxies:
+            return direct_ip
+
+        # 检查直接连接的 IP 是否在可信代理列表中
+        if direct_ip not in trusted_proxies and "0.0.0.0/0" not in trusted_proxies:
+            return direct_ip
+
+        # 从 X-Forwarded-For 获取真实客户端 IP
+        forwarded_for = request.headers.get("X-Forwarded-For", "")
+        if forwarded_for:
+            # X-Forwarded-For 格式: client, proxy1, proxy2
+            # 取第一个（最左边的）IP 作为真实客户端 IP
+            ips = [ip.strip() for ip in forwarded_for.split(",")]
+            if ips:
+                return ips[0]
+
+        return direct_ip
+
     def setup_routes(self, app: web.Application) -> None:
         """注册路由到 aiohttp 应用
 
@@ -1344,8 +1379,8 @@ class WebAdminHandler:
                 {"error": "Admin password not configured"}, status=400
             )
 
-        # 获取客户端 IP
-        client_ip = request.remote or "unknown"
+        # 获取客户端 IP（支持可信代理）
+        client_ip = self.get_client_ip(request)
 
         # 检查是否被锁定
         if self.auth_manager.check_lockout(client_ip):
@@ -1370,12 +1405,17 @@ class WebAdminHandler:
             token = self.auth_manager.create_session()
             # 设置 cookie 并返回
             response = web.json_response({"success": True})
+            # 检测是否为 HTTPS 请求，动态设置 secure 属性
+            is_secure = request.scheme == "https" or request.headers.get(
+                "X-Forwarded-Proto", ""
+            ).lower() == "https"
             response.set_cookie(
                 "admin_session",
                 token,
                 max_age=24 * 60 * 60,  # 24 小时
                 httponly=True,
                 samesite="Lax",
+                secure=is_secure,
             )
             return response
         else:
@@ -1705,6 +1745,9 @@ class WebAdminHandler:
         # 更新认证管理器
         self.auth_manager.set_password_hash(new_hash)
         self.auth_manager.set_plaintext_password(None)
+
+        # 清除所有现有会话，强制重新登录（防止会话固定攻击）
+        self.auth_manager.clear_all_sessions()
 
         # 保存到文件（如果失败，密码仍对本次运行有效）
         save_failed = False
