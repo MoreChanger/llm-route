@@ -239,9 +239,15 @@ def load_config(config_path: str) -> Config:
                 if 1 <= port_value <= 65535:
                     config.port = port_value
                 else:
-                    print(f"警告: LLM_ROUTE_PORT 值 {port_value} 超出有效范围 (1-65535)，使用默认端口")
+                    print(
+                        f"警告: LLM_ROUTE_PORT 值 {port_value} "
+                        "超出有效范围 (1-65535)，使用默认端口"
+                    )
             except ValueError:
-                print(f"警告: LLM_ROUTE_PORT 值 '{env_port}' 不是有效的端口号，使用默认端口")
+                print(
+                    f"警告: LLM_ROUTE_PORT 值 '{env_port}' "
+                    "不是有效的端口号，使用默认端口"
+                )
 
     return config
 

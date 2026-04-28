@@ -1247,7 +1247,9 @@ class WebAdminHandler:
         direct_ip = request.remote or "unknown"
 
         # 如果没有配置可信代理，直接使用连接 IP
-        trusted_proxies = self.proxy_server.config.trusted_proxies if self.proxy_server else []
+        trusted_proxies = (
+            self.proxy_server.config.trusted_proxies if self.proxy_server else []
+        )
         if not trusted_proxies:
             return direct_ip
 
