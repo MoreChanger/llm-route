@@ -1,0 +1,14 @@
+# Mailmap 文件用于将多个邮箱映射到同一贡献者
+# 格式: 正确名称 <正确邮箱> 错误名称 <错误邮箱>
+
+# 将 CGDeer 映射到 MoreChanger（同一邮箱）
+MoreChanger <767368395@qq.com> CGDeer <767368395@qq.com>
+
+# 将 Developer 映射到 MoreChanger
+MoreChanger <767368395@qq.com> Developer <developer@example.com>
+
+# 将 Claude Code 映射到 MoreChanger（可选，保留 AI 辅助标记）
+MoreChanger <767368395@qq.com> Claude Code <claude@anthropic.com>
+
+# 将 root 映射到 MoreChanger
+MoreChanger <767368395@qq.com> root <root@Deer-Laptop.localdomain>
