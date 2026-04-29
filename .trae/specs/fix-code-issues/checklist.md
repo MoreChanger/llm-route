@@ -1,0 +1,12 @@
+- [x] responses_converter 模块的 convert_stream 方法有完整的 SSE 流式转换测试
+- [x] responses_converter 模块的 _read_sse_lines 方法有边界条件测试
+- [x] responses_converter 模块的工具调用处理有完整测试
+- [x] proxy 模块的流式请求异常处理有完整测试
+- [x] proxy 模块的 RollingBuffer 类有边界条件测试
+- [x] proxy 模块的重试机制有边界条件测试
+- [x] log_file 模块的日志文件滚动功能有测试
+- [x] log_file 模块的日志压缩功能有测试
+- [x] log_file 模块的 AsyncLogWriter 异步写入有测试
+- [x] 项目依赖已优化，移除不必要的依赖
+- [x] 整体测试覆盖率提升（核心模块达到 70% 以上）
+- [x] 所有测试通过（299 passed, 8 skipped）
